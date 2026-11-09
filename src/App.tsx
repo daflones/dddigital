@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import type { Session } from '@supabase/supabase-js'
+import type { RealtimeChannel, Session } from '@supabase/supabase-js'
 import { ArrowRight, AudioLines, BookOpen, Check, ChevronDown, ChevronRight, CircleHelp, Code2, Compass, Hash, Headphones, LogOut, Menu, MessageCircle, MessageSquare, Phone, PhoneOff, Plus, Radio, Search, Settings2, ShieldCheck, Sparkles, Users, UserPlus, Volume2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Auth } from './components/Auth'
@@ -90,7 +90,9 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
   const [incomingCall, setIncomingCall] = useState<{ channelId: string; from: string; name: string; avatar?: string | null } | null>(null)
   const [calling, setCalling] = useState<{ channelId: string; name: string; avatar?: string | null } | null>(null)
   const [statusMenu, setStatusMenu] = useState(false)
+  const [callPeers, setCallPeers] = useState<Record<string, { id: string; name: string; avatar?: string | null }[]>>({})
   const inviteAttempted = useRef(false)
+  const presenceRef = useRef<RealtimeChannel | null>(null)
   const roomRef = useRef<RoomCredentials | null>(null)
   roomRef.current = room
   const myStatus = profile.presence || 'online'
@@ -239,15 +241,33 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
     if (declared === 'offline') return 'offline'
     return onlineIds.has(p.id) ? declared : 'offline'
   }, [onlineIds])
-  // Who is currently connected — realtime presence channel.
+  // Who is currently connected — realtime presence channel. The tracked
+  // payload also carries the call channel the user is in, so friends see
+  // "está na chamada" and can rejoin even after they left the room.
   useEffect(() => {
     if (demo) return
     const presence = db().channel('ddtal-presence', { config: { presence: { key: profile.id } } })
-    presence.on('presence', { event: 'sync' }, () => setOnlineIds(new Set(Object.keys(presence.presenceState()))))
-      .subscribe(status => { if (status === 'SUBSCRIBED') void presence.track({ status: myStatus }) })
-    return () => { void db().removeChannel(presence) }
+    presenceRef.current = presence
+    presence.on('presence', { event: 'sync' }, () => {
+      const state = presence.presenceState() as Record<string, { call?: string | null; name?: string; avatar?: string | null }[]>
+      setOnlineIds(new Set(Object.keys(state)))
+      const calls: Record<string, { id: string; name: string; avatar?: string | null }[]> = {}
+      for (const [uid, metas] of Object.entries(state)) {
+        if (uid === profile.id) continue
+        const meta = metas[0]
+        if (meta?.call) (calls[meta.call] ||= []).push({ id: uid, name: meta.name || 'Amigo(a)', avatar: meta.avatar })
+      }
+      setCallPeers(calls)
+    })
+      .subscribe(status => { if (status === 'SUBSCRIBED') void presence.track({ status: myStatus, call: roomRef.current?.channel.id ?? null, name: profile.display_name, avatar: profile.avatar_url }) })
+    return () => { presenceRef.current = null; void db().removeChannel(presence) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demo, profile.id])
+  // Re-publish tracked presence when status or active room changes.
+  useEffect(() => {
+    void presenceRef.current?.track({ status: myStatus, call: room?.channel.id ?? null, name: profile.display_name, avatar: profile.avatar_url })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room, myStatus])
   // Listen for moderator signals and incoming/declined calls.
   useEffect(() => {
     if (demo) return
@@ -409,10 +429,12 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
       <button className="server-heading" onClick={() => requireAccount(() => setDialog('profile'))}><div className="server-mini-icon"><Avatar name={profile.display_name} url={profile.avatar_url} size="small" frame={profile.avatar_frame} /></div><div><strong><StyledName profile={profile} /></strong><span>Seu espaço pessoal</span></div><Settings2 size={15} /></button>
       <div className="sidebar-scroll">
         <button className={`sidebar-nav-item ${view === 'friends' ? 'active' : ''}`} onClick={() => { setView('friends'); setMobileNav(false) }}><Users size={18} />Amigos<ArrowRight size={15} /></button>
-        <div className="channel-group"><div className="group-heading"><span><ChevronDown size={12} />MENSAGENS DIRETAS</span></div>{channels.filter(c => c.kind === 'direct').map(c => { const peer = dmPeers[c.id]; return <button key={c.id} className={`channel-link dm-link ${view === 'dm' && channelId === c.id ? 'active' : ''}`} onClick={() => selectChannel(c.id, 'direct')}><Avatar name={c.name} url={peer?.avatar_url} size="tiny" presence={presenceOf(peer)} /><span>{peer ? <StyledName profile={peer} /> : c.name}</span></button> })}{!channels.some(c => c.kind === 'direct') && <p className="sidebar-empty">Nenhuma conversa ainda. Abra o perfil de alguém e envie uma mensagem.</p>}</div>
+        <div className="channel-group"><div className="group-heading"><span><ChevronDown size={12} />MENSAGENS DIRETAS</span></div>{channels.filter(c => c.kind === 'direct').map(c => { const peer = dmPeers[c.id]; return <button key={c.id} className={`channel-link dm-link ${view === 'dm' && channelId === c.id ? 'active' : ''}`} onClick={() => selectChannel(c.id, 'direct')}><Avatar name={c.name} url={peer?.avatar_url} size="tiny" presence={presenceOf(peer)} /><span>{peer ? <StyledName profile={peer} /> : c.name}</span>{room?.channel.id === c.id ? <AudioLines size={15} className="green" /> : callPeers[c.id]?.length ? <span className="dm-incall"><Phone size={11} />em chamada</span> : null}</button> })}{!channels.some(c => c.kind === 'direct') && <p className="sidebar-empty">Nenhuma conversa ainda. Abra o perfil de alguém e envie uma mensagem.</p>}</div>
       </div>
       </>}
       {room && <button className="connected-indicator" onClick={() => selectChannel(room.channel.id, room.channel.kind)}><AudioLines size={18} /><span><strong>Conectado à sala</strong><small>{room.channel.name}</small></span><ChevronRight size={15} /></button>}
+      {Object.entries(callPeers).filter(([id]) => room?.channel.id !== id && channels.find(c => c.id === id)?.kind === 'direct').map(([id, peers]) =>
+        <button key={id} className="connected-indicator rejoin" onClick={() => void joinById(id)}><AudioLines size={18} /><span><strong>{peers[0].name} está na chamada</strong><small>Toque para voltar à conversa</small></span><Phone size={15} /></button>)}
       <div className="user-dock"><button className="profile-button" onClick={() => requireAccount(() => setDialog('profile'))}><Avatar name={profile.display_name} url={profile.avatar_url} size="small" presence={myStatus} frame={profile.avatar_frame} /><span><strong><StyledName profile={profile} /></strong><small>{profile.status_text || statusOptions.find(o => o.v === myStatus)?.label || 'Disponível'}</small></span></button><button className="icon-button status-toggle" title="Seu status" aria-label="Seu status" onClick={() => requireAccount(() => setStatusMenu(!statusMenu))}><i className={`presence-dot p-${myStatus}`} /></button><button className="icon-button" title="Meu perfil" aria-label="Meu perfil" onClick={() => requireAccount(() => setDialog('profile'))}><Settings2 size={18} /></button>
         {statusMenu && <div className="status-menu">{statusOptions.map(o => <button key={o.v} className={o.v === myStatus ? 'active' : ''} onClick={() => void setPresence(o.v)}><i className={`presence-dot p-${o.v}`} /><span><strong>{o.label}</strong><small>{o.hint}</small></span>{o.v === myStatus && <Check size={14} />}</button>)}</div>}
       </div>
