@@ -341,7 +341,7 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
         throw new Error(detail)
       }
       if (!data?.token || !data?.url) throw new Error(data?.error || 'A sala ainda não está configurada.')
-      setRoom({ token: data.token, url: data.url, channel: target }); setView('server')
+      setRoom({ token: data.token, url: data.url, channel: target }); setView(target.kind === 'direct' ? 'dm' : 'server')
     } catch (e) { toast.error(errorMessage(e), { duration: 6500 }) }
     finally { setJoining(false) }
   }

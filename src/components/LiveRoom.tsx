@@ -39,7 +39,7 @@ export default function LiveRoom({ credentials, leave, canModerate, moveTargets,
   canModerate: boolean; moveTargets: Channel[]; moderate: Moderate
   onParticipants?: (identities: string[]) => void
 }) {
-  return <LiveKitRoom serverUrl={credentials.url} token={credentials.token} connect audio={false} video={false}
+  return <LiveKitRoom serverUrl={credentials.url} token={credentials.token} connect audio video={false}
     options={{ adaptiveStream: true, dynacast: true, publishDefaults: { screenShareEncoding: ScreenSharePresets.h1080fps30.encoding, screenShareSimulcastLayers: [ScreenSharePresets.h720fps15] } }}
     onError={error => toast.error(errorMessage(error))} onDisconnected={leave} className="live-room">
     <RoomView canModerate={canModerate} moveTargets={moveTargets} moderate={moderate} onParticipants={onParticipants} />
