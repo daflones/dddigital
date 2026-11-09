@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { ArrowDown, ArrowUp, Check, Copy, Link, Plus, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { db, errorMessage, rpc, avatarUrl } from '../lib/supabase'
-import type { Channel, Message, Profile, Role, RoleFlag } from '../lib/types'
-import { Modal, ProfileCard } from './ui'
+import { db, errorMessage, rpc, avatarUrl, serverIconUrl } from '../lib/supabase'
+import type { Channel, Message, Profile, Role, RoleFlag, Server } from '../lib/types'
+import { Modal, ProfileCard, StyledName } from './ui'
 import { GifPanel } from './Pickers'
 
 export function CreateServer({ close, created }: { close: () => void; created: (id: string) => void }) {
@@ -28,6 +28,84 @@ export function CreateChannel({ serverId, close, created }: { serverId: string; 
     } catch (error) { toast.error(errorMessage(error)) } finally { setBusy(false) }
   }
   return <Modal title="Uma nova conversa começa aqui." close={close}><form onSubmit={submit}><label>Nome do canal<input name="name" required maxLength={60} placeholder="Ex.: laboratório-de-ideias" autoFocus /></label><label>Tipo<select name="kind"><option value="text">Canal de texto</option><option value="voice">Sala de voz e vídeo</option></select></label><label>Sobre este canal<input name="topic" maxLength={240} placeholder="Um espaço para…" /></label><button className="primary full" disabled={busy}>{busy ? 'Criando…' : 'Criar canal'}</button></form></Modal>
+}
+// Server branding: icon (image or GIF), styled name and description. Staff only.
+async function uploadServerIcon(serverId: string, file: File): Promise<string> {
+  if (file.type === 'image/gif') {
+    const path = `${serverId}/icon.gif`
+    const { error } = await db().storage.from('ddtal-server-assets').upload(path, file, { upsert: true, contentType: 'image/gif' })
+    if (error) throw error
+    return path
+  }
+  const bitmap = await createImageBitmap(file)
+  const side = Math.min(bitmap.width, bitmap.height)
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = 256
+  canvas.getContext('2d')!.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, 256, 256)
+  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error('Não consegui processar a imagem.')), 'image/webp', 0.9))
+  const path = `${serverId}/icon.webp`
+  const { error } = await db().storage.from('ddtal-server-assets').upload(path, blob, { upsert: true, contentType: 'image/webp' })
+  if (error) throw error
+  return path
+}
+export function ServerSettings({ server, close, updated }: { server: Server; close: () => void; updated: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [icon, setIcon] = useState<PendingMedia>({})
+  const [gifFor, setGifFor] = useState(false)
+  const [preview, setPreview] = useState<Server>({ ...server })
+  async function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault(); const values = new FormData(e.currentTarget); setBusy(true)
+    try {
+      let icon_url = preview.icon_url
+      if (icon.file) icon_url = await uploadServerIcon(server.id, icon.file)
+      else if (icon.external) {
+        // External GIFs are re-hosted into our bucket so the icon never depends on a third party.
+        const res = await fetch(icon.external)
+        if (!res.ok) throw new Error('Não consegui baixar o GIF.')
+        const blob = await res.blob()
+        const path = `${server.id}/icon.gif`
+        const { error } = await db().storage.from('ddtal-server-assets').upload(path, blob, { upsert: true, contentType: 'image/gif' })
+        if (error) throw error
+        icon_url = path
+      } else if (icon.removed) icon_url = null
+      const { error } = await db().from('ddtal_servers').update({
+        name: values.get('name'), description: values.get('description'), icon_url,
+        name_color: values.get('use_color') === 'on' ? values.get('color') : null,
+        name_effect: values.get('effect'), name_font: values.get('font'),
+      }).eq('id', server.id)
+      if (error) throw error
+      updated(); toast.success('Servidor atualizado.'); close()
+    } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
+  }
+  const refresh = (form: HTMLFormElement) => {
+    const v = new FormData(form)
+    setPreview({ ...preview, name: String(v.get('name')) || 'Servidor', description: String(v.get('description') || ''), name_color: v.get('use_color') === 'on' ? String(v.get('color')) : null, name_effect: v.get('effect') as Server['name_effect'], name_font: v.get('font') as Server['name_font'] })
+  }
+  const iconPreview = mediaPreview(icon, preview.icon_url?.startsWith('http') ? preview.icon_url : serverIconUrl(preview.icon_url))
+  return <Modal title={`Personalizar ${server.name}`} close={close}>
+    <div className="server-preview">
+      <div className="invite-server-icon">{iconPreview ? <img src={iconPreview} alt="" /> : preview.name.slice(0, 2).toUpperCase()}</div>
+      <div><strong><StyledName profile={{ display_name: preview.name, name_color: preview.name_color, name_effect: preview.name_effect, name_font: preview.name_font }} /></strong><p className="muted">{preview.description || 'Sem descrição.'}</p></div>
+    </div>
+    <form onSubmit={submit} onChange={e => refresh(e.currentTarget)}>
+      <div className="avatar-upload"><label className="secondary">Ícone imagem/GIF<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={e => { const f = e.target.files?.[0]; if (f) { if (f.size > 8 * 1024 * 1024) { toast.error('O limite é 8 MB.'); return } setIcon({ file: f }) } e.target.value = '' }} /></label>
+        <button type="button" className="secondary" onClick={() => setGifFor(true)}><Search size={14} />Buscar GIF</button>
+        {iconPreview && <button type="button" className="secondary danger-text" onClick={() => setIcon({ removed: true })}>Remover ícone</button>}
+      </div>
+      <label>Nome do servidor<input name="name" defaultValue={server.name} required minLength={2} maxLength={60} /></label>
+      <label>Descrição<textarea name="description" defaultValue={server.description} maxLength={240} rows={2} placeholder="Sobre o que é este espaço?" /></label>
+      <div className="name-style-row">
+        <label className="check-inline"><input type="checkbox" name="use_color" defaultChecked={Boolean(server.name_color)} />Cor</label>
+        <input name="color" type="color" defaultValue={server.name_color || '#b69afb'} aria-label="Cor do nome do servidor" />
+        <label className="grow">Efeito<select name="effect" defaultValue={server.name_effect || 'none'}>{NAME_EFFECTS.map(fx => <option key={fx.value} value={fx.value}>{fx.label}</option>)}</select></label>
+        <label className="grow">Fonte<select name="font" defaultValue={server.name_font || 'default'}>{NAME_FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></label>
+      </div>
+      <button className="primary full" disabled={busy}>{busy ? 'Salvando…' : 'Salvar servidor'}</button>
+    </form>
+    {gifFor && <Modal title="GIF para o ícone" close={() => setGifFor(false)}>
+      <div className="gif-panel inline"><GifPanel onGif={url => { setIcon({ external: url }); setGifFor(false) }} /></div>
+    </Modal>}
+  </Modal>
 }
 export function Invite({ serverId, serverName, close }: { serverId: string; serverName: string; close: () => void }) {
   const [link, setLink] = useState('')

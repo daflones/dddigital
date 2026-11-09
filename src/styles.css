@@ -232,3 +232,19 @@
 .fx-card-vapor .pc-banner-fill{background:linear-gradient(115deg,#ff7ad9,#7c5cff 50%,#4dc3ff)}
 .fx-card-vapor::after{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 80% 0%,rgba(255,122,217,.14),transparent 45%)}
 .member-card .profile-card{margin-bottom:8px}
+
+/* ---- Server branding + invite preview ---- */
+.server-icon-img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.server-mini-icon img{width:100%;height:100%;object-fit:cover;border-radius:9px}
+.invite-preview{display:flex;flex-direction:column;gap:10px;padding:14px;margin-bottom:14px;border-radius:14px;background:linear-gradient(150deg,rgba(182,154,251,.1),rgba(0,0,0,.2));border:1px solid rgba(182,154,251,.25)}
+.invite-server-icon{width:56px;height:56px;border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#7c5cff,#b69afb);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;color:#fff;flex-shrink:0}
+.invite-server-icon img{width:100%;height:100%;object-fit:cover}
+.invite-preview>div:nth-child(2){display:flex;flex-direction:column;gap:2px}
+.invite-server-info strong{font-size:16px}
+.invite-server-info p{margin:0;font-size:12px;color:#a89ec0}
+.invite-meta{display:flex;align-items:center;gap:5px;font-size:11px;color:#8f85a8;margin-top:3px}
+.invite-by{display:flex;align-items:center;gap:8px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08);font-size:12px;color:#a89ec0}
+.invite-by strong{color:#e6dcff}
+.server-preview{display:flex;align-items:center;gap:12px;padding:12px;margin-bottom:12px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
+.server-preview strong{font-size:16px}
+.server-preview p{margin:2px 0 0;font-size:12px}

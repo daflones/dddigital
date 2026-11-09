@@ -29,6 +29,7 @@
    VITE_SUPABASE_URL=https://ruisoxcbuiuktffsqcro.supabase.co
    VITE_SUPABASE_ANON_KEY=<chave publishable ou anon do projeto>
    VITE_TURNSTILE_SITE_KEY=<site key pública do widget já usado no projeto>
+   VITE_GIPHY_API_KEY=<opcional — habilita a busca de GIFs no chat, avatar e ícone do servidor>
    ```
 
    O Dockerfile declara esses `ARG`. Não basta definir variáveis no container depois de compilar: confira se a configuração do Easypanel as entrega ao build. No Easypanel, essas variáveis geralmente ficam na aba **Environment** do app — certifique-se de que o campo esteja marcado como **build arg / deploy-time**; senão edite o Dockerfile para embutir os valores ou use `ENV` durante o build.

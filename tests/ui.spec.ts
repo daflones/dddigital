@@ -43,7 +43,9 @@ test('mobile classroom stays in viewport and exposes navigation and chat', async
 test('authentication and signup preserve invitations', async ({ page }) => {
   await page.goto('/?invite=dd000000-0000-4000-8000-000000000099')
   await expect(page.getByRole('heading', { name: 'Bom ter você de volta.' })).toBeVisible()
-  await expect(page.getByText('Você recebeu um convite.', { exact: false })).toBeVisible()
+  // The fake invite id should surface the invite flow: either the server card or a friendly error.
+  await expect(page.getByText(/convid|convite/i)).toBeVisible()
+  await expect(page.getByText('direto no servidor', { exact: false })).toBeVisible()
   await page.getByRole('button', { name: 'Cadastre-se', exact: true }).click()
   await expect(page.getByLabel('Seu nome')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Continuar com Google' })).toBeEnabled()

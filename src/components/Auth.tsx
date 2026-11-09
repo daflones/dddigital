@@ -1,20 +1,34 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Turnstile } from '@marsidev/react-turnstile'
 import type { TurnstileInstance } from '@marsidev/react-turnstile'
-import { ArrowRight, Github, Radio, MonitorUp, MessagesSquare } from 'lucide-react'
+import { ArrowRight, Github, Radio, MonitorUp, MessagesSquare, Users } from 'lucide-react'
 import { toast } from 'sonner'
-import { Brand } from './ui'
-import { configured, db, errorMessage } from '../lib/supabase'
+import { Avatar, Brand, StyledName } from './ui'
+import { configured, db, errorMessage, serverIconUrl } from '../lib/supabase'
+import type { InvitePreview } from '../lib/types'
 
 export function Auth({ onDemo }: { onDemo: () => void }) {
   const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login')
   const [pending, setPending] = useState(false)
   const [captchaToken, setCaptchaToken] = useState<string>()
   const [captchaError, setCaptchaError] = useState(false)
+  const [preview, setPreview] = useState<InvitePreview | null>(null)
+  const [previewError, setPreviewError] = useState('')
   const captcha = useRef<TurnstileInstance>(null)
   const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY
   const invite = new URLSearchParams(location.search).get('invite')
   const redirectTo = location.origin + (invite ? `/?invite=${encodeURIComponent(invite)}` : '/')
+  useEffect(() => {
+    if (!invite || !configured) return
+    let active = true
+    db().rpc('ddtal_invite_preview', { p_invite: invite })
+      .then(({ data, error }) => {
+        if (!active) return
+        if (error) setPreviewError(errorMessage(error))
+        else setPreview(data as InvitePreview)
+      })
+    return () => { active = false }
+  }, [invite])
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
@@ -55,7 +69,16 @@ export function Auth({ onDemo }: { onDemo: () => void }) {
       <div className="auth-card">
         <div className="eyebrow">SEU ESPAÇO ESTÁ AQUI</div>
         <h2>{mode === 'signup' ? 'Vamos nos conectar.' : mode === 'reset' ? 'Recupere seu acesso.' : 'Bom ter você de volta.'}</h2>
-        <p>{invite ? 'Você recebeu um convite. Entre ou crie sua conta para participar.' : 'Entre na sua conta e faça parte da conversa.'}</p>
+        {preview ? <div className="invite-preview">
+          <div className="invite-server-icon">{serverIconUrl(preview.icon_url) ? <img src={serverIconUrl(preview.icon_url)!} alt="" /> : preview.name.slice(0, 2).toUpperCase()}</div>
+          <div className="invite-server-info">
+            <strong><StyledName profile={{ display_name: preview.name, name_color: preview.name_color, name_effect: preview.name_effect, name_font: preview.name_font }} /></strong>
+            {preview.description && <p>{preview.description}</p>}
+            <span className="invite-meta"><Users size={12} />{preview.members} {preview.members === 1 ? 'membro' : 'membros'}</span>
+          </div>
+          <div className="invite-by"><Avatar name={preview.inviter} url={preview.inviter_avatar} size="tiny" /><span><strong>{preview.inviter}</strong> convidou você</span></div>
+        </div> : invite && <p className="muted">{previewError || (configured ? 'Carregando convite…' : 'Você recebeu um convite.')}</p>}
+        <p>{invite ? (mode === 'signup' ? 'Crie sua conta e entre direto no servidor.' : 'Entre e você já cai direto no servidor.') : 'Entre na sua conta e faça parte da conversa.'}</p>
         {mode !== 'reset' && <><button className="google-button" disabled={!configured || pending} onClick={google}><b className="google-g">G</b> Continuar com Google</button><div className="divider"><span>ou use seu e-mail</span></div></>}
         <form onSubmit={submit}>
           {mode === 'signup' && <label>Seu nome<input name="name" placeholder="Como podemos chamar você?" required minLength={2} maxLength={60} autoComplete="name" /></label>}

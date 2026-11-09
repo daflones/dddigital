@@ -23,6 +23,11 @@ export function avatarUrl(path?: string | null) {
   return supabase.storage.from('ddtal-avatars').getPublicUrl(path).data.publicUrl
 }
 
+export function serverIconUrl(path?: string | null) {
+  if (!path || !supabase) return null
+  return supabase.storage.from('ddtal-server-assets').getPublicUrl(path).data.publicUrl
+}
+
 export function errorMessage(error: unknown) {
   if (error && typeof error === 'object' && 'message' in error) return String(error.message)
   return 'Não foi possível concluir. Tente novamente.'

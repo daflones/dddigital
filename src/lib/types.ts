@@ -8,7 +8,15 @@ export type Profile = {
   status_text?: string; bio?: string; banner_url?: string | null
   avatar_frame?: AvatarFrame; card_effect?: CardEffect; card_color?: string | null
 }
-export type Server = { id: string; name: string; description: string; owner_id: string }
+export type Server = {
+  id: string; name: string; description: string; owner_id: string
+  icon_url?: string | null; name_color?: string | null; name_effect?: NameEffect; name_font?: NameFont
+}
+export type InvitePreview = {
+  server_id: string; name: string; description: string; icon_url?: string | null
+  name_color?: string | null; name_effect?: NameEffect; name_font?: NameFont
+  inviter: string; inviter_avatar?: string | null; members: number
+}
 export type Channel = { id: string; server_id: string | null; name: string; kind: 'text' | 'voice' | 'direct'; topic: string }
 export type Message = {
   id: string; channel_id: string; author_id: string; content: string; created_at: string

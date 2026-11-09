@@ -8,14 +8,14 @@ import { Chat } from './components/Chat'
 import { Notes } from './components/Notes'
 import { ClassroomLobby } from './components/Classroom'
 import { Friends } from './components/Friends'
-import { CreateChannel, CreateServer, Invite, ManageRoles, ProfileSettings, SearchMessages } from './components/Dialogs'
+import { CreateChannel, CreateServer, Invite, ManageRoles, ProfileSettings, SearchMessages, ServerSettings } from './components/Dialogs'
 import { MembersPanel } from './components/Members'
-import { db, errorMessage, rpc, supabase } from './lib/supabase'
+import { db, errorMessage, rpc, serverIconUrl, supabase } from './lib/supabase'
 import { demoChannels, demoMembers, demoProfile, demoServer } from './lib/demo'
 import type { Channel, Membership, MemberRole, Profile, Role, RoleFlag, RoomCredentials, Server } from './lib/types'
 
 const LiveRoom = lazy(() => import('./components/LiveRoom'))
-type DialogName = 'server' | 'channel' | 'invite' | 'profile' | 'search' | 'help' | 'roles' | null
+type DialogName = 'server' | 'channel' | 'invite' | 'profile' | 'search' | 'help' | 'roles' | 'serverSettings' | null
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
@@ -145,6 +145,7 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ddtal_roles', filter: `server_id=eq.${serverId}` }, () => void refresh())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ddtal_member_roles', filter: `server_id=eq.${serverId}` }, () => void refresh())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ddtal_channels', filter: `server_id=eq.${serverId}` }, () => void load())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'ddtal_servers', filter: `id=eq.${serverId}` }, () => void load())
       .subscribe(status => { if (status === 'SUBSCRIBED') { void refresh(); void load() } })
     return () => { active = false; void db().removeChannel(sub) }
   }, [serverId, demo, load])
@@ -242,11 +243,11 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
   }
 
   return <div className="app-shell">
-    <aside className="server-rail"><button className="home-button" title="Discodigital" aria-label="Início" onClick={() => { setView('server'); setMobileNav(!mobileNav) }}><img src="/favicon.svg" alt="" /></button><div className="rail-divider" />{servers.map(s => <button key={s.id} className={`server-button ${serverId === s.id && view === 'server' ? 'selected' : ''}`} title={s.name} aria-label={s.name} onClick={() => selectServer(s.id)}>{s.name.toLowerCase().includes('f.dev') ? <span>F<span className="dot">.</span></span> : s.name.slice(0, 2).toUpperCase()}<i /></button>)}<button className="rail-add" title="Criar servidor" aria-label="Criar servidor" onClick={() => requireAccount(() => setDialog('server'))}><Plus size={23} /></button><button className={`rail-friends ${view === 'friends' ? 'selected' : ''}`} title="Amigos" aria-label="Amigos" onClick={() => { setView('friends'); setMobileNav(false) }}><Compass size={22} /></button><div className="rail-bottom"><button title="Como funciona" aria-label="Como funciona" onClick={() => setDialog('help')}><CircleHelp size={21} /></button><button title="Sair" aria-label="Sair" onClick={signOut}><LogOut size={20} /></button></div></aside>
+    <aside className="server-rail"><button className="home-button" title="Discodigital" aria-label="Início" onClick={() => { setView('server'); setMobileNav(!mobileNav) }}><img src="/favicon.svg" alt="" /></button><div className="rail-divider" />{servers.map(s => <button key={s.id} className={`server-button ${serverId === s.id && view === 'server' ? 'selected' : ''}`} title={s.name} aria-label={s.name} onClick={() => selectServer(s.id)}>{s.icon_url ? <img className="server-icon-img" src={serverIconUrl(s.icon_url)!} alt="" /> : s.name.toLowerCase().includes('f.dev') ? <span>F<span className="dot">.</span></span> : s.name.slice(0, 2).toUpperCase()}<i /></button>)}<button className="rail-add" title="Criar servidor" aria-label="Criar servidor" onClick={() => requireAccount(() => setDialog('server'))}><Plus size={23} /></button><button className={`rail-friends ${view === 'friends' ? 'selected' : ''}`} title="Amigos" aria-label="Amigos" onClick={() => { setView('friends'); setMobileNav(false) }}><Compass size={22} /></button><div className="rail-bottom"><button title="Como funciona" aria-label="Como funciona" onClick={() => setDialog('help')}><CircleHelp size={21} /></button><button title="Sair" aria-label="Sair" onClick={signOut}><LogOut size={20} /></button></div></aside>
     {mobileNav && <button className="mobile-backdrop" aria-label="Fechar canais" onClick={() => setMobileNav(false)} />}
     <aside className={`channel-sidebar ${mobileNav ? 'mobile-open' : ''}`}>
       <div className="sidebar-brand"><Brand /><button className="icon-button mobile-only" aria-label="Fechar menu" onClick={() => setMobileNav(false)}><X size={18} /></button></div>
-      <button className="server-heading" onClick={() => currentServer ? setDialog('help') : requireAccount(() => setDialog('server'))}><div className="server-mini-icon"><Code2 size={21} /></div><div><strong>{currentServer?.name || 'Seu espaço'}</strong><span>{demo ? 'Comunidade de demonstração' : 'Sua comunidade, conectada'}</span></div><ChevronDown size={15} /></button>
+      <button className="server-heading" onClick={() => currentServer ? (staff ? setDialog('serverSettings') : setDialog('help')) : requireAccount(() => setDialog('server'))}><div className="server-mini-icon">{currentServer?.icon_url ? <img src={serverIconUrl(currentServer.icon_url)!} alt="" /> : <Code2 size={21} />}</div><div><strong>{currentServer ? <StyledName profile={{ display_name: currentServer.name, name_color: currentServer.name_color, name_effect: currentServer.name_effect, name_font: currentServer.name_font }} /> : 'Seu espaço'}</strong><span>{demo ? 'Comunidade de demonstração' : 'Sua comunidade, conectada'}</span></div>{staff && currentServer ? <Settings2 size={15} /> : <ChevronDown size={15} />}</button>
       <div className="sidebar-scroll">
         <div className="community-banner"><span><Sparkles size={14} /> CONSTRUA SEU PRÓXIMO NÍVEL</span><strong>30 dias. Infinitas possibilidades.</strong><p>Uma comunidade. Um passo por dia.</p><div className="community-progress">{Array.from({ length: 30 }, (_, i) => <i key={i} className={i < 7 ? 'filled' : ''} />)}</div><small>DA PRIMEIRA IDEIA AO PRIMEIRO DEPLOY</small></div>
         <button className={`sidebar-nav-item ${view === 'friends' ? 'active' : ''}`} onClick={() => { setView('friends'); setMobileNav(false) }}><Users size={18} />Amigos<ArrowRight size={15} /></button>
@@ -280,6 +281,7 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
     {dialog === 'server' && <CreateServer close={() => setDialog(null)} created={id => { setChannelId(null); setView('server'); void load(id) }} />}
     {dialog === 'channel' && serverId && <CreateChannel serverId={serverId} close={() => setDialog(null)} created={() => void load()} />}
     {dialog === 'invite' && currentServer && <Invite serverId={currentServer.id} serverName={currentServer.name} close={() => setDialog(null)} />}
+    {dialog === 'serverSettings' && currentServer && staff && <ServerSettings server={currentServer} close={() => setDialog(null)} updated={() => void load()} />}
     {dialog === 'profile' && <ProfileSettings profile={profile} close={() => setDialog(null)} updated={updateProfile} />}
     {dialog === 'search' && channel && <SearchMessages channel={channel} close={() => setDialog(null)} />}
     {dialog === 'roles' && serverId && <ManageRoles serverId={serverId} roles={roles} close={() => setDialog(null)} changed={() => void refreshRoles()} />}

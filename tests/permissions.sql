@@ -67,6 +67,15 @@ do $$ begin
   exception when check_violation then null; end;
 end $$;
 
+-- Server branding: members cannot restyle the server; invite preview works.
+update public.ddtal_servers set name='Defaced',icon_url='dd000000-0000-4000-8000-000000000001/icon.webp' where id=current_setting('ddtal.test.server')::uuid;
+select pg_temp.ddtal_assert((select name<>'Defaced' from public.ddtal_servers where id=current_setting('ddtal.test.server')::uuid),'member cannot restyle server');
+select pg_temp.ddtal_assert((select (public.ddtal_invite_preview(current_setting('ddtal.test.invite')::uuid)->>'members')::int >= 1),'invite preview returns member count');
+select set_config('request.jwt.claims','{"sub":"dd000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+update public.ddtal_servers set icon_url='dd000000-0000-4000-8000-000000000001/icon.webp',name_effect='glow',name_font='pixel' where id=current_setting('ddtal.test.server')::uuid;
+select pg_temp.ddtal_assert((select icon_url is not null and name_effect='glow' and name_font='pixel' from public.ddtal_servers where id=current_setting('ddtal.test.server')::uuid),'staff restyles the server');
+select set_config('request.jwt.claims','{"sub":"dd000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
+
 do $$ begin
   begin
     insert into public.ddtal_messages(channel_id,author_id,content) values(current_setting('ddtal.test.channel')::uuid,'dd000000-0000-4000-8000-000000000001','Spoof');
