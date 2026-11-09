@@ -104,7 +104,27 @@ do $$ begin
     if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
   end;
 end $$;
+-- Nicknames: member sets own; cannot set others' without manage_nicknames; cannot promote.
+select public.ddtal_set_nickname(current_setting('ddtal.test.server')::uuid,'dd000000-0000-4000-8000-000000000002','Estagiário');
+do $$ begin
+  begin
+    perform public.ddtal_set_nickname(current_setting('ddtal.test.server')::uuid,'dd000000-0000-4000-8000-000000000001','Invadido');
+    raise exception 'ASSERTION FAILED: member renamed another user';
+  exception when raise_exception then
+    if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
+  end;
+  begin
+    perform public.ddtal_set_member_role(current_setting('ddtal.test.server')::uuid,'dd000000-0000-4000-8000-000000000003','moderator');
+    raise exception 'ASSERTION FAILED: member promoted someone';
+  exception when raise_exception then
+    if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
+  end;
+end $$;
 select set_config('request.jwt.claims','{"sub":"dd000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select pg_temp.ddtal_assert((select nickname='Estagiário' from public.ddtal_members where server_id=current_setting('ddtal.test.server')::uuid and user_id='dd000000-0000-4000-8000-000000000002'),'own nickname persisted');
+select public.ddtal_set_nickname(current_setting('ddtal.test.server')::uuid,'dd000000-0000-4000-8000-000000000002','Monitor');
+select public.ddtal_set_member_role(current_setting('ddtal.test.server')::uuid,'dd000000-0000-4000-8000-000000000002','moderator');
+select pg_temp.ddtal_assert((select nickname='Monitor' and role='moderator' from public.ddtal_members where server_id=current_setting('ddtal.test.server')::uuid and user_id='dd000000-0000-4000-8000-000000000002'),'owner renames and promotes member');
 select public.ddtal_accept_friend(current_setting('ddtal.test.friend')::uuid);
 select set_config('ddtal.test.dm',public.ddtal_open_dm('dd000000-0000-4000-8000-000000000003')::text,true);
 select pg_temp.ddtal_assert(public.ddtal_can_access_channel(current_setting('ddtal.test.dm')::uuid),'accepted friend can access DM');

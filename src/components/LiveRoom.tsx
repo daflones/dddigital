@@ -34,14 +34,15 @@ function styledTileName(name: string, meta: ParticipantMeta) {
   return <span className={`styled-name fx-${effect} font-${font}`} style={style}>{name}</span>
 }
 
-export default function LiveRoom({ credentials, leave, canModerate, moveTargets, moderate }: {
+export default function LiveRoom({ credentials, leave, canModerate, moveTargets, moderate, onParticipants }: {
   credentials: RoomCredentials; leave: () => void
   canModerate: boolean; moveTargets: Channel[]; moderate: Moderate
+  onParticipants?: (identities: string[]) => void
 }) {
   return <LiveKitRoom serverUrl={credentials.url} token={credentials.token} connect audio={false} video={false}
     options={{ adaptiveStream: true, dynacast: true, publishDefaults: { screenShareEncoding: ScreenSharePresets.h1080fps30.encoding, screenShareSimulcastLayers: [ScreenSharePresets.h720fps15] } }}
     onError={error => toast.error(errorMessage(error))} onDisconnected={leave} className="live-room">
-    <RoomView canModerate={canModerate} moveTargets={moveTargets} moderate={moderate} />
+    <RoomView canModerate={canModerate} moveTargets={moveTargets} moderate={moderate} onParticipants={onParticipants} />
   </LiveKitRoom>
 }
 
@@ -182,9 +183,10 @@ function ParticipantMenu({ participant, moveTargets, moderate, close }: {
   </div>
 }
 
-function RoomView({ canModerate, moveTargets, moderate }: { canModerate: boolean; moveTargets: Channel[]; moderate: Moderate }) {
+function RoomView({ canModerate, moveTargets, moderate, onParticipants }: { canModerate: boolean; moveTargets: Channel[]; moderate: Moderate; onParticipants?: (identities: string[]) => void }) {
   const room = useRoomContext()
   const participants = useParticipants()
+  useEffect(() => { onParticipants?.(participants.map(p => p.identity)) }, [participants, onParticipants])
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } = useLocalParticipant()
   const tracks = useTracks([Track.Source.ScreenShare, Track.Source.Camera])
   const state = useConnectionState()

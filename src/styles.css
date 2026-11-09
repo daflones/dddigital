@@ -130,3 +130,18 @@
 .name-style-row{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:4px}
 .name-style-row>label.grow{flex:1;min-width:110px}
 .name-style-row input[type=color]{width:52px;height:38px;padding:4px;cursor:pointer}
+
+/* ---- Member card + nickname editor ---- */
+.member-row.actionable{cursor:pointer}
+.member-card{min-width:230px}
+.member-card-head{display:flex;align-items:center;gap:10px;padding:8px 10px 10px;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:6px}
+.member-card-head>div{display:flex;flex-direction:column;min-width:0}
+.member-card-head strong{font-size:13px;color:#fff}
+.member-card-head span{font-size:10.5px;color:#6f6484}
+.nickname-editor{padding:2px 0 6px}
+.nickname-editor .menu-label{display:flex;align-items:center;gap:5px}
+.nickname-row{display:flex;gap:6px;padding:2px 10px 8px}
+.nickname-row input{flex:1;min-width:0;padding:7px 9px;border-radius:7px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.3);color:#fff;font-size:12px;outline:none}
+.nickname-row input:focus{border-color:rgba(182,154,251,.55)}
+.nickname-row>button{flex-shrink:0;width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:7px;background:rgba(182,154,251,.15);color:#b69afb}
+.nickname-row>button:hover{background:rgba(182,154,251,.3)}

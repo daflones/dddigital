@@ -41,6 +41,10 @@ Deno.serve(async (req: Request) => {
       Array.isArray(row.ddtal_roles) ? row.ddtal_roles[0] : row.ddtal_roles)
     .filter(Boolean)
     .sort((a: { position: number }, b: { position: number }) => a.position - b.position)[0]
+  // Per-server nickname wins over the global display name inside rooms.
+  const { data: membership } = channel.server_id
+    ? await client.from('ddtal_members').select('nickname').eq('server_id', channel.server_id).eq('user_id', user.id).maybeSingle()
+    : { data: null }
   const metadata = JSON.stringify({
     role: topRole ? { name: topRole.name, color: topRole.color } : null,
     avatar_url: profile?.avatar_url || null,
@@ -53,7 +57,7 @@ Deno.serve(async (req: Request) => {
   const url = Deno.env.get('DDTAL_LIVEKIT_URL')
   if (!key || !secret || !url) return reply({ error: 'As chamadas ainda não foram configuradas. O chat já está disponível.' }, 503)
   const token = new AccessToken(key, secret, {
-    identity: user.id, name: profile?.display_name || 'Builder', ttl: '15m', metadata,
+    identity: user.id, name: membership?.nickname || profile?.display_name || 'Builder', ttl: '15m', metadata,
   })
   token.addGrant({
     room: `ddtal_${channel.id}`, roomJoin: true,

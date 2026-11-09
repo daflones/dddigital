@@ -112,6 +112,7 @@ const ROLE_FLAGS: { flag: RoleFlag; label: string; hint: string }[] = [
   { flag: 'manage_roles', label: 'Gerenciar cargos', hint: 'Criar e atribuir cargos' },
   { flag: 'manage_invites', label: 'Gerenciar convites', hint: 'Gerar e revogar links de convite' },
   { flag: 'kick_members', label: 'Expulsar membros', hint: 'Remover pessoas do servidor' },
+  { flag: 'manage_nicknames', label: 'Gerenciar apelidos', hint: 'Alterar o apelido de outros membros' },
   { flag: 'edit_notes', label: 'Editar notas', hint: 'Escrever nas notas compartilhadas' },
 ]
 const roleFlags = (role: Partial<Role>, form?: HTMLFormElement) => Object.fromEntries(ROLE_FLAGS.map(({ flag }) =>
