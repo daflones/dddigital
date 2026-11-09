@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=JetBrains+Mono:wght@400;500;600&family=Press+Start+2P&family=Caveat:wght@600&display=swap');
 
 :root{font-family:'DM Sans',sans-serif;color:#eeedf2;background:#101114;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased;font-weight:400;font-size:14px;color-scheme:dark;--bg:#151619;--panel:#1a1b1f;--line:#ffffff0c;--muted:#85858f;--purple:#b69afb;--green:#bce98a}
 *{box-sizing:border-box}body{margin:0}button,input,textarea,select{font:inherit}button,a,input,textarea{-webkit-tap-highlight-color:transparent}button{cursor:pointer;border:0;color:inherit;background:none;transition:background .18s,color .18s,transform .18s}button:disabled{cursor:not-allowed;opacity:.45}button:focus-visible,a:focus-visible{outline:2px solid var(--purple);outline-offset:4px}input:focus,textarea:focus,select:focus{outline:1px solid var(--purple);border-color:var(--purple)}input,textarea,select{border:1px solid #ffffff13;border-radius:8px;background:#15161a;color:#eeedf2;padding:12px 14px;min-width:0;width:100%;outline:none}input::placeholder,textarea::placeholder{color:#72727f}textarea{resize:vertical}label{display:flex;flex-direction:column;gap:9px;font-size:12px;font-weight:600;color:#c8c6d0;margin-bottom:20px}form{margin:0}svg{flex-shrink:0}h1,h2,h3,p{margin-top:0}h1,h2,h3{font-weight:600;letter-spacing:-.035em}a{color:var(--purple);text-decoration:none}a:hover{text-decoration:underline}::selection{background:#a68ae84d}::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:#3a3942;border-radius:9px}::-webkit-scrollbar-track{background:transparent}
@@ -102,3 +102,31 @@
 .pip-controls>button.active{background:#b69afb;color:#17131f}
 .pip-controls>button.hangup{background:rgba(255,90,90,.2);color:#ff8f8f}
 .pip-controls>button.hangup:hover{background:#ff5a5a;color:#fff}
+
+/* ---- Profile customization: avatar + name styling ---- */
+.avatar.has-image img{width:100%;height:100%;object-fit:cover;border-radius:inherit;position:absolute;inset:0}
+.styled-name{font-weight:inherit}
+.font-mono{font-family:'JetBrains Mono',monospace}
+.font-pixel{font-family:'Press Start 2P',monospace;font-size:.78em;letter-spacing:.6px}
+.font-script{font-family:'Caveat',cursive;font-size:1.35em;line-height:.9}
+.fx-glow{text-shadow:0 0 9px currentColor,0 0 22px currentColor}
+.fx-pulse{animation:ddtal-pulse 1.9s ease-in-out infinite}
+@keyframes ddtal-pulse{0%,100%{text-shadow:0 0 3px currentColor}50%{text-shadow:0 0 14px currentColor,0 0 32px currentColor}}
+.fx-rainbow{background:linear-gradient(90deg,#ff6b6b,#ffd93d,#9fe870,#6bd5ff,#b69afb,#ff6b6b);background-size:400% 100%;-webkit-background-clip:text;background-clip:text;color:transparent!important;animation:ddtal-rainbow 4.5s linear infinite}
+@keyframes ddtal-rainbow{to{background-position:400% 0}}
+.fx-wave i{display:inline-block;font-style:normal;animation:ddtal-wave 1.5s ease-in-out infinite}
+@keyframes ddtal-wave{0%,100%{transform:translateY(0)}25%{transform:translateY(-3.5px)}}
+.profile-preview{display:flex;align-items:center;gap:14px;padding:14px;margin-bottom:14px;background:rgba(182,154,251,.07);border:1px solid rgba(182,154,251,.22);border-radius:12px}
+.profile-preview .avatar{width:56px;height:56px;font-size:20px}
+.profile-preview>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.profile-preview .preview-name{font-size:20px;font-weight:700}
+.profile-preview>div>span{font-size:12px;color:#6f6484}
+.avatar-upload{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.avatar-upload label.secondary{display:inline-flex;align-items:center;padding:9px 14px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);font-size:12px;font-weight:600;cursor:pointer}
+.avatar-upload label.secondary:hover{border-color:rgba(182,154,251,.5);background:rgba(182,154,251,.1)}
+.avatar-upload .muted{font-size:11px}
+.check-inline{display:flex!important;align-items:center;gap:7px;font-size:12px;color:#cfc6e0;cursor:pointer;flex-direction:row!important}
+.check-inline input{accent-color:#b69afb;margin:0}
+.name-style-row{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+.name-style-row>label.grow{flex:1;min-width:110px}
+.name-style-row input[type=color]{width:52px;height:38px;padding:4px;cursor:pointer}

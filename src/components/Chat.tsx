@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { db, errorMessage } from '../lib/supabase'
 import type { Channel, Message, Profile } from '../lib/types'
 import { demoMessages } from '../lib/demo'
-import { Avatar } from './ui'
+import { Avatar, StyledName } from './ui'
 
 const PAGE = 50
 const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf', 'text/plain']
@@ -136,9 +136,9 @@ export function Chat({ channel, profile, demo, compact = false }: { channel: Cha
         const previous = messages[index - 1]
         const grouped = previous?.author_id === message.author_id && new Date(message.created_at).getTime() - new Date(previous.created_at).getTime() < 300000
         return <article className={`message ${grouped ? 'grouped' : ''}`} key={message.id}>
-          {!grouped && <Avatar name={message.author?.display_name || 'Builder'} size="small" />}
+          {!grouped && <Avatar name={message.author?.display_name || 'Builder'} url={message.author?.avatar_url} size="small" />}
           <div className="message-body">
-            {!grouped && <div className="message-meta"><strong>{message.author?.display_name || 'Builder'}</strong>{message.author_id === profile.id && <span className="you-tag">você</span>}<time title={new Date(message.created_at).toLocaleString('pt-BR')}>{new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time></div>}
+            {!grouped && <div className="message-meta"><strong>{message.author ? <StyledName profile={message.author} /> : 'Builder'}</strong>{message.author_id === profile.id && <span className="you-tag">você</span>}<time title={new Date(message.created_at).toLocaleString('pt-BR')}>{new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time></div>}
             {message.content && <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ children, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer">{children}</a>, img: ({ alt }) => <span>[Imagem externa: {alt || 'link'}]</span> }}>{message.content}</ReactMarkdown></div>}
             {message.attachment_path && <Attachment message={message} />}
           </div>

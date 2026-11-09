@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { ArrowRight, AudioLines, BookOpen, Check, ChevronDown, ChevronRight, CircleHelp, Code2, Compass, Hash, Headphones, LogOut, Menu, MessageCircle, MessageSquare, Plus, Radio, Search, Settings2, ShieldCheck, Sparkles, Users, UserPlus, Volume2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Auth } from './components/Auth'
-import { Avatar, Brand, Modal } from './components/ui'
+import { Avatar, Brand, Modal, StyledName } from './components/ui'
 import { Chat } from './components/Chat'
 import { Notes } from './components/Notes'
 import { ClassroomLobby } from './components/Classroom'
@@ -255,7 +255,7 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
         {currentServer && <button className="invite-sidebar" onClick={() => requireAccount(() => can('manage_invites') ? setDialog('invite') : toast.info('Peça um convite à equipe do servidor.'))}><UserPlus size={17} /><span>Convide sua comunidade</span><Plus size={14} /></button>}
       </div>
       {room && <button className="connected-indicator" onClick={() => selectChannel(room.channel.id)}><AudioLines size={18} /><span><strong>Conectado à sala</strong><small>{room.channel.name}</small></span><ChevronRight size={15} /></button>}
-      <div className="user-dock"><button className="profile-button" onClick={() => requireAccount(() => setDialog('profile'))}><Avatar name={profile.display_name} size="small" online /><span><strong>{profile.display_name}</strong><small>{demo ? 'Explorando o espaço' : 'Pronto para conectar'}</small></span></button><button className="icon-button" title="Meu perfil" aria-label="Meu perfil" onClick={() => requireAccount(() => setDialog('profile'))}><Settings2 size={18} /></button></div>
+      <div className="user-dock"><button className="profile-button" onClick={() => requireAccount(() => setDialog('profile'))}><Avatar name={profile.display_name} url={profile.avatar_url} size="small" online /><span><strong><StyledName profile={profile} /></strong><small>{demo ? 'Explorando o espaço' : 'Pronto para conectar'}</small></span></button><button className="icon-button" title="Meu perfil" aria-label="Meu perfil" onClick={() => requireAccount(() => setDialog('profile'))}><Settings2 size={18} /></button></div>
     </aside>
     <div className="workspace">
       <header className="workspace-header"><div><button className="icon-button mobile-only" aria-label="Abrir canais" onClick={() => setMobileNav(true)}><Menu size={21} /></button>{view === 'friends' ? <Users size={21} /> : voice ? <Volume2 size={22} /> : <Hash size={22} />}<strong>{view === 'friends' ? 'Amigos' : channel?.name || 'Bem-vindo ao seu espaço'}</strong>{view === 'server' && <><span className="header-separator" /><span className="channel-topic">{channel?.topic || 'Boas conexões começam aqui.'}</span></>}</div><div>{demo && <span className="demo-tag">MODO DEMONSTRAÇÃO</span>}<button className="icon-button" aria-label="Buscar mensagens" title="Buscar mensagens" disabled={!channel || view === 'friends'} onClick={() => requireAccount(() => setDialog('search'))}><Search size={19} /></button><button className="icon-button" aria-label="Ver membros" title="Ver membros" onClick={() => { setPanel('members'); setMobilePanel(!mobilePanel) }}><Users size={20} /></button>{demo ? <button className="header-login" onClick={exitDemo}>Entrar <ArrowRight size={14} /></button> : <span className="private-label"><ShieldCheck size={14} />Seu espaço</span>}</div></header>

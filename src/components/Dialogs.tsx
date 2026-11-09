@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { ArrowDown, ArrowUp, Check, Copy, Link, Plus, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { db, errorMessage, rpc } from '../lib/supabase'
+import { db, errorMessage, rpc, avatarUrl } from '../lib/supabase'
 import type { Channel, Message, Profile, Role, RoleFlag } from '../lib/types'
-import { Modal } from './ui'
+import { Avatar, Modal, StyledName } from './ui'
 
 export function CreateServer({ close, created }: { close: () => void; created: (id: string) => void }) {
   const [busy, setBusy] = useState(false)
@@ -41,17 +41,70 @@ export function Invite({ serverId, serverName, close }: { serverId: string; serv
   }
   return <Modal title="A comunidade começa com um convite." close={close}><p className="muted">Traga seus alunos e amigos para <strong>{serverName}</strong>. Eles poderão entrar com e-mail ou Google.</p><div className="invite-art"><Link size={40} /></div>{link ? <><label>Seu link de convite<input value={link} readOnly onFocus={e => e.target.select()} /></label><button className="primary full" onClick={() => void navigator.clipboard.writeText(link).then(() => { setCopied(true); toast.success('Convite copiado!') }).catch(() => toast.error('Selecione e copie o link acima.'))}>{copied ? <Check size={18} /> : <Copy size={18} />}{copied ? 'Link copiado' : 'Copiar convite'}</button><p className="modal-footnote">Válido por 7 dias, para até 100 novos participantes.</p></> : <button className="primary full" disabled={busy} onClick={generate}>{busy ? 'Preparando…' : 'Gerar link de convite'}</button>}</Modal>
 }
+const NAME_EFFECTS: { value: NonNullable<Profile['name_effect']>; label: string }[] = [
+  { value: 'none', label: 'Nenhum' }, { value: 'glow', label: 'Brilho' }, { value: 'pulse', label: 'Pulso' },
+  { value: 'rainbow', label: 'Arco-íris' }, { value: 'wave', label: 'Onda' },
+]
+const NAME_FONTS: { value: NonNullable<Profile['name_font']>; label: string }[] = [
+  { value: 'default', label: 'Padrão' }, { value: 'mono', label: 'Terminal' },
+  { value: 'pixel', label: 'Pixel' }, { value: 'script', label: 'Escrita à mão' },
+]
+async function makeAvatarBlob(file: File): Promise<Blob> {
+  const bitmap = await createImageBitmap(file)
+  const size = 256
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  const side = Math.min(bitmap.width, bitmap.height)
+  ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size)
+  return new Promise((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error('Não consegui processar a imagem.')), 'image/webp', 0.9))
+}
 export function ProfileSettings({ profile, close, updated }: { profile: Profile; close: () => void; updated: (profile: Profile) => void }) {
   const [busy, setBusy] = useState(false)
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [preview, setPreview] = useState<Profile>({ ...profile })
+  const draftAvatar = avatarFile ? URL.createObjectURL(avatarFile) : avatarUrl(preview.avatar_url)
   async function submit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault(); const values = new FormData(e.currentTarget); setBusy(true)
+    e.preventDefault(); const form = e.currentTarget; const values = new FormData(form); setBusy(true)
     try {
-      const { data, error } = await db().from('ddtal_profiles').update({ display_name: values.get('name'), handle: String(values.get('handle')).toLowerCase() }).eq('id', profile.id).select().single()
+      let avatar_url: string | null | undefined = preview.avatar_url
+      if (avatarFile) {
+        const blob = await makeAvatarBlob(avatarFile)
+        avatar_url = `${profile.id}/avatar.webp`
+        const { error: uploadError } = await db().storage.from('ddtal-avatars').upload(avatar_url, blob, { upsert: true, contentType: 'image/webp' })
+        if (uploadError) throw uploadError
+      }
+      if (values.get('remove_avatar') === 'on') avatar_url = null
+      const { data, error } = await db().from('ddtal_profiles').update({
+        display_name: values.get('name'), handle: String(values.get('handle')).toLowerCase(),
+        avatar_url, name_color: values.get('use_color') === 'on' ? values.get('color') : null,
+        name_effect: values.get('effect'), name_font: values.get('font'),
+      }).eq('id', profile.id).select().single()
       if (error) throw error
       updated(data as Profile); toast.success('Perfil atualizado.'); close()
     } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
   }
-  return <Modal title="Como a comunidade vê você." close={close}><form onSubmit={submit}><label>Nome de exibição<input name="name" defaultValue={profile.display_name} required minLength={2} maxLength={60} /></label><label>Seu identificador<input name="handle" defaultValue={profile.handle} required minLength={3} maxLength={32} pattern="[a-z0-9_]{3,32}" /></label><p className="muted">Use letras minúsculas, números e _. Seus amigos encontram você por esse identificador.</p><button className="primary full" disabled={busy}>{busy ? 'Salvando…' : 'Salvar perfil'}</button></form></Modal>
+  const refresh = (form: HTMLFormElement) => {
+    const v = new FormData(form)
+    setPreview({ ...preview, display_name: String(v.get('name')) || 'Builder', name_color: v.get('use_color') === 'on' ? String(v.get('color')) : null, name_effect: v.get('effect') as Profile['name_effect'], name_font: v.get('font') as Profile['name_font'] })
+  }
+  return <Modal title="Como a comunidade vê você." close={close}>
+    <div className="profile-preview"><Avatar name={preview.display_name} url={draftAvatar} /><div><StyledName profile={preview} className="preview-name" /><span>@{preview.handle}</span></div></div>
+    <form onSubmit={submit} onChange={e => refresh(e.currentTarget)}>
+      <div className="avatar-upload"><label className="secondary">Escolher imagem<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={e => { const f = e.target.files?.[0]; if (f) { if (f.size > 5 * 1024 * 1024) { toast.error('Imagem acima de 5 MB.'); return } setAvatarFile(f) } }} /></label>
+        {preview.avatar_url && <label className="check-inline"><input type="checkbox" name="remove_avatar" /> Remover avatar</label>}
+        <span className="muted">Recortamos e centralizamos em 256×256.</span></div>
+      <label>Nome de exibição<input name="name" defaultValue={profile.display_name} required minLength={2} maxLength={60} /></label>
+      <label>Seu identificador<input name="handle" defaultValue={profile.handle} required minLength={3} maxLength={32} pattern="[a-z0-9_]{3,32}" /></label>
+      <p className="muted">Use letras minúsculas, números e _. Seus amigos encontram você por esse identificador.</p>
+      <div className="name-style-row">
+        <label className="check-inline"><input type="checkbox" name="use_color" defaultChecked={Boolean(profile.name_color)} />Cor</label>
+        <input name="color" type="color" defaultValue={profile.name_color || '#b69afb'} aria-label="Cor do nome" />
+        <label className="grow">Efeito<select name="effect" defaultValue={profile.name_effect || 'none'}>{NAME_EFFECTS.map(fx => <option key={fx.value} value={fx.value}>{fx.label}</option>)}</select></label>
+        <label className="grow">Fonte<select name="font" defaultValue={profile.name_font || 'default'}>{NAME_FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></label>
+      </div>
+      <button className="primary full" disabled={busy}>{busy ? 'Salvando…' : 'Salvar perfil'}</button>
+    </form></Modal>
 }
 const ROLE_FLAGS: { flag: RoleFlag; label: string; hint: string }[] = [
   { flag: 'moderate_voice', label: 'Moderar voz', hint: 'Silenciar, expulsar e mover pessoas nas salas' },

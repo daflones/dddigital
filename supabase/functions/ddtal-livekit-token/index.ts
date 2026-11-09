@@ -31,7 +31,7 @@ Deno.serve(async (req: Request) => {
   if (typeof body.channelId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.channelId)) return reply({ error: 'Canal inválido.' }, 400)
   const { data: channel } = await client.from('ddtal_channels').select('id,kind,server_id').eq('id', body.channelId).single()
   if (!channel || !['voice', 'direct'].includes(channel.kind)) return reply({ error: 'Você não tem acesso a esta sala.' }, 403)
-  const { data: profile } = await client.from('ddtal_profiles').select('display_name').eq('id', user.id).single()
+  const { data: profile } = await client.from('ddtal_profiles').select('display_name,avatar_url,name_color,name_effect,name_font').eq('id', user.id).single()
   // Highest-position role becomes the badge shown next to the participant.
   const { data: memberRoles } = channel.server_id
     ? await client.from('ddtal_member_roles').select('role_id,ddtal_roles(name,color,position)').eq('server_id', channel.server_id).eq('user_id', user.id)
@@ -41,7 +41,13 @@ Deno.serve(async (req: Request) => {
       Array.isArray(row.ddtal_roles) ? row.ddtal_roles[0] : row.ddtal_roles)
     .filter(Boolean)
     .sort((a: { position: number }, b: { position: number }) => a.position - b.position)[0]
-  const metadata = JSON.stringify({ role: topRole ? { name: topRole.name, color: topRole.color } : null })
+  const metadata = JSON.stringify({
+    role: topRole ? { name: topRole.name, color: topRole.color } : null,
+    avatar_url: profile?.avatar_url || null,
+    name_color: profile?.name_color || null,
+    name_effect: profile?.name_effect || 'none',
+    name_font: profile?.name_font || 'default',
+  })
   const key = Deno.env.get('DDTAL_LIVEKIT_API_KEY')
   const secret = Deno.env.get('DDTAL_LIVEKIT_API_SECRET')
   const url = Deno.env.get('DDTAL_LIVEKIT_URL')

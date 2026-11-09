@@ -19,11 +19,19 @@ type Moderate = (action: ModerateAction, targetUserId: string, destinationChanne
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
-function roleBadge(participant: { metadata?: string }) {
-  try {
-    const role = JSON.parse(participant.metadata || '{}').role
-    return role?.name ? <span className="tile-role" style={{ color: role.color, borderColor: role.color }}><BadgeCheck size={10} />{role.name}</span> : null
-  } catch { return null }
+type ParticipantMeta = { role?: { name: string; color: string } | null; avatar_url?: string | null; name_color?: string | null; name_effect?: string; name_font?: string }
+function participantMeta(participant: { metadata?: string }): ParticipantMeta {
+  try { return JSON.parse(participant.metadata || '{}') } catch { return {} }
+}
+function roleBadge(meta: ParticipantMeta) {
+  return meta.role?.name ? <span className="tile-role" style={{ color: meta.role.color, borderColor: meta.role.color }}><BadgeCheck size={10} />{meta.role.name}</span> : null
+}
+function styledTileName(name: string, meta: ParticipantMeta) {
+  const effect = meta.name_effect || 'none'
+  const font = meta.name_font || 'default'
+  const style = meta.name_color && effect !== 'rainbow' ? { color: meta.name_color } : undefined
+  if (effect === 'wave') return <span className={`styled-name fx-wave font-${font}`} style={style}>{[...name].map((c, i) => <i key={i} style={{ animationDelay: `${i * 0.07}s` }}>{c === ' ' ? ' ' : c}</i>)}</span>
+  return <span className={`styled-name fx-${effect} font-${font}`} style={style}>{name}</span>
 }
 
 export default function LiveRoom({ credentials, leave, canModerate, moveTargets, moderate }: {
@@ -132,7 +140,7 @@ function FloatingPanel({ remoteScreen, raised, onClose }: { remoteScreen?: Track
     <div className="pip-header"><span><i className="status-dot" />Painel da sala</span><button aria-label="Fechar painel" onClick={onClose}><PhoneOff size={13} /></button></div>
     {remoteScreen && <div className="pip-screen"><VideoTrack trackRef={remoteScreen} /><span>{remoteScreen.participant.name || 'Builder'} está compartilhando</span></div>}
     <div className="pip-people">{participants.map(p => <div key={p.identity} className={p.isSpeaking ? 'speaking' : ''}>
-      <Avatar name={p.name || 'Builder'} size="tiny" /><span>{p.isLocal ? 'Você' : p.name || 'Builder'}</span>
+      <Avatar name={p.name || 'Builder'} url={participantMeta(p).avatar_url} size="tiny" /><span>{p.isLocal ? 'Você' : styledTileName(p.name || 'Builder', participantMeta(p))}</span>
       {raised.includes(p.identity) && <Hand size={12} className="raised" />}{p.isMicrophoneEnabled ? <Mic size={11} /> : <MicOff size={11} />}
     </div>)}</div>
     <div className="pip-controls">
@@ -245,8 +253,8 @@ function RoomView({ canModerate, moveTargets, moderate }: { canModerate: boolean
     <div className="participant-strip">{participants.map(p => {
       const camera = tracks.find(t => t.participant.identity === p.identity && t.source === Track.Source.Camera)
       return <div className={`participant-tile ${p.isSpeaking ? 'speaking' : ''}`} key={p.identity}>
-        {camera ? <VideoTrack trackRef={camera} /> : <Avatar name={p.name || 'Builder'} />}
-        <div><span>{p.isLocal ? 'Você' : p.name || 'Builder'}{roleBadge(p)}</span>{raised.includes(p.identity) && <Hand size={14} className="raised" />}{p.isMicrophoneEnabled ? <Mic size={13} /> : <MicOff size={13} />}</div>
+        {camera ? <VideoTrack trackRef={camera} /> : <Avatar name={p.name || 'Builder'} url={participantMeta(p).avatar_url} />}
+        <div><span>{p.isLocal ? 'Você' : styledTileName(p.name || 'Builder', participantMeta(p))}{roleBadge(participantMeta(p))}</span>{raised.includes(p.identity) && <Hand size={14} className="raised" />}{p.isMicrophoneEnabled ? <Mic size={13} /> : <MicOff size={13} />}</div>
         {canModerate && !p.isLocal && <button className="tile-moderate" aria-label={`Moderar ${p.name}`} title="Moderar participante" onClick={() => setMenuFor(menuFor === p.identity ? null : p.identity)}><Volume2 size={14} /></button>}
         {canModerate && !p.isLocal && menuFor === p.identity && <ParticipantMenu participant={p as RemoteParticipant} moveTargets={moveTargets} moderate={moderate} close={() => setMenuFor(null)} />}
       </div>

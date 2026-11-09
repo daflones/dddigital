@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { BadgeCheck, MoreVertical, ShieldCheck, ShieldPlus, UserMinus } from 'lucide-react'
 import { toast } from 'sonner'
 import { errorMessage, rpc } from '../lib/supabase'
-import { Avatar } from './ui'
+import { Avatar, StyledName } from './ui'
 import type { Channel, Membership, MemberRole, Profile, Role, RoleFlag } from '../lib/types'
 
 // Members sidebar: role badges + moderation (assign roles, remove from server).
@@ -50,9 +50,9 @@ export function MembersPanel({ channel, members, roles, memberRoles, can, profil
         const isOwner = m.role === 'owner'
         const actionable = (canManageRoles || canKick) && !isOwner && m.user_id !== profile.id
         return <div className="member-row" key={m.user_id}>
-          <Avatar name={m.profile.display_name} size="small" />
+          <Avatar name={m.profile.display_name} url={m.profile.avatar_url} size="small" />
           <div>
-            <strong>{m.profile.display_name}{m.user_id === profile.id && ' (você)'}</strong>
+            <strong><StyledName profile={m.profile} />{m.user_id === profile.id && ' (você)'}</strong>
             <span>{isOwner ? 'Criador · professor' : m.role === 'moderator' ? 'Equipe' : `@${m.profile.handle}`}</span>
             {badges.length > 0 && <div className="role-badges">{badges.map(r => <i key={r.id} className="role-badge" style={{ color: r.color, borderColor: r.color }}><BadgeCheck size={11} />{r.name}</i>)}</div>}
           </div>

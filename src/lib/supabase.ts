@@ -18,6 +18,11 @@ export async function rpc<T>(name: string, args?: Record<string, unknown>): Prom
   return data as T
 }
 
+export function avatarUrl(path?: string | null) {
+  if (!path || !supabase) return null
+  return supabase.storage.from('ddtal-avatars').getPublicUrl(path).data.publicUrl
+}
+
 export function errorMessage(error: unknown) {
   if (error && typeof error === 'object' && 'message' in error) return String(error.message)
   return 'Não foi possível concluir. Tente novamente.'

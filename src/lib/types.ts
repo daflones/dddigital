@@ -1,4 +1,9 @@
-export type Profile = { id: string; display_name: string; handle: string; avatar_url?: string }
+export type NameEffect = 'none' | 'glow' | 'pulse' | 'rainbow' | 'wave'
+export type NameFont = 'default' | 'mono' | 'pixel' | 'script'
+export type Profile = {
+  id: string; display_name: string; handle: string; avatar_url?: string | null
+  name_color?: string | null; name_effect?: NameEffect; name_font?: NameFont
+}
 export type Server = { id: string; name: string; description: string; owner_id: string }
 export type Channel = { id: string; server_id: string | null; name: string; kind: 'text' | 'voice' | 'direct'; topic: string }
 export type Message = {
