@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { db, errorMessage } from '../lib/supabase'
 import type { Channel, Message, Profile } from '../lib/types'
 import { demoMessages } from '../lib/demo'
-import { Avatar, Modal, ProfileCard, StyledName } from './ui'
+import { Avatar, Modal, PeerActions, ProfileCard, StyledName } from './ui'
 import { EmojiGifPicker } from './Pickers'
 
 const PAGE = 50
@@ -56,8 +56,9 @@ function ReplyQuote({ reply }: { reply: NonNullable<Message['reply']> }) {
   </div>
 }
 
-export function Chat({ channel, profile, demo, compact = false, canDeleteOthers = false }: {
+export function Chat({ channel, profile, demo, compact = false, canDeleteOthers = false, onDM }: {
   channel: Channel; profile: Profile; demo: boolean; compact?: boolean; canDeleteOthers?: boolean
+  onDM?: (peer: Profile) => void
 }) {
   const [messages, setMessages] = useState<Message[]>(demo ? demoMessages.filter(m => m.channel_id === channel.id) : [])
   const [content, setContent] = useState('')
@@ -288,7 +289,9 @@ export function Chat({ channel, profile, demo, compact = false, canDeleteOthers 
       <input ref={input} type="file" hidden accept={allowedTypes.join(',')} onChange={e => { chooseFile(e.target.files?.[0]); e.target.value = '' }} />
       <span className="composer-hint">{demo ? 'Prévia interativa · mensagens não são publicadas' : 'Enter envia · Esc limpa · 🎙 grava áudio'}</span>
       {picker && <EmojiGifPicker onEmoji={u => { setContent(v => v + u); textArea.current?.focus() }} onGif={sendGif} close={() => setPicker(false)} />}
-      {viewing && <Modal title="Perfil" close={() => setViewing(null)}><ProfileCard profile={viewing} /></Modal>}
+      {viewing && <Modal title="Perfil" close={() => setViewing(null)}>
+        <ProfileCard profile={viewing} actions={<PeerActions me={profile} peer={viewing} demo={demo} onDM={onDM} onDone={() => setViewing(null)} />} />
+      </Modal>}
     </form>
   </section>
 }

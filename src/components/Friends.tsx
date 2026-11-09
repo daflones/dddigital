@@ -3,7 +3,7 @@ import { Check, MessageCircle, Phone, Search, UserPlus, Users, X } from 'lucide-
 import { toast } from 'sonner'
 import { db, errorMessage, rpc } from '../lib/supabase'
 import type { Friendship, Profile } from '../lib/types'
-import { Avatar, Modal, ProfileCard, StyledName } from './ui'
+import { Avatar, Modal, PeerActions, ProfileCard, StyledName } from './ui'
 
 export function Friends({ profile, demo, openDM }: { profile: Profile; demo: boolean; openDM: (peer: Profile, call?: boolean) => void }) {
   const [viewing, setViewing] = useState<Profile | null>(null)
@@ -49,6 +49,8 @@ export function Friends({ profile, demo, openDM }: { profile: Profile; demo: boo
     <p className="your-handle">Seu identificador: <button className="text-button" onClick={() => void navigator.clipboard.writeText(profile.handle).then(() => toast.success('Identificador copiado.')).catch(() => toast.error('Não foi possível copiar.'))}>@{profile.handle}</button></p>
     <div className="friends-tabs"><button className={tab === 'accepted' ? 'active' : ''} onClick={() => setTab('accepted')}><Users size={16} />Amigos <span>{friends.filter(f => f.status === 'accepted').length}</span></button><button className={tab === 'pending' ? 'active' : ''} onClick={() => setTab('pending')}>Solicitações <span>{friends.filter(f => f.status === 'pending').length}</span></button></div>
     {!loaded ? <div className="center-muted">Carregando suas conexões…</div> : visible.length ? <div className="friends-list">{visible.map(friend => <div className="friend-row" key={friend.id}><button className="author-click" aria-label={`Ver perfil de ${friend.peer.display_name}`} onClick={() => setViewing(friend.peer)}><Avatar name={friend.peer.display_name} url={friend.peer.avatar_url} frame={friend.peer.avatar_frame} /></button><div><button className="author-click name" onClick={() => setViewing(friend.peer)}><strong><StyledName profile={friend.peer} /></strong></button><span>@{friend.peer.handle}{friend.status === 'pending' && ` · ${friend.requester_id === profile.id ? 'Enviada' : 'Recebida'}`}</span></div>{friend.status === 'accepted' ? <><button className="icon-button" title="Conversar" aria-label={`Conversar com ${friend.peer.display_name}`} onClick={() => openDM(friend.peer)}><MessageCircle size={20} /></button><button className="icon-button" title="Iniciar ligação" aria-label={`Ligar para ${friend.peer.display_name}`} onClick={() => openDM(friend.peer, true)}><Phone size={19} /></button></> : <>{friend.recipient_id === profile.id && <button className="icon-button" title="Aceitar" aria-label={`Aceitar ${friend.peer.display_name}`} disabled={busy} onClick={() => void respond(friend, true)}><Check size={20} /></button>}<button className="icon-button" title="Recusar ou cancelar" aria-label="Recusar ou cancelar solicitação" disabled={busy} onClick={() => void respond(friend, false)}><X size={20} /></button></>}</div>)}</div> : <div className="friends-empty"><div><Search size={34} /></div><h2>{tab === 'pending' ? 'Tudo em dia por aqui.' : 'Encontre sua próxima conexão.'}</h2><p>{tab === 'pending' ? 'As novas solicitações aparecem neste espaço.' : 'Peça o identificador de alguém da turma e comece uma conversa.'}</p></div>}
-    {viewing && <Modal title="Perfil" close={() => setViewing(null)}><ProfileCard profile={viewing} /></Modal>}
+    {viewing && <Modal title="Perfil" close={() => setViewing(null)}>
+      <ProfileCard profile={viewing} actions={<PeerActions me={profile} peer={viewing} demo={demo} onDM={p => { setViewing(null); openDM(p) }} />} />
+    </Modal>}
   </div>
 }

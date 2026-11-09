@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { BadgeCheck, Check, MoreVertical, PenLine, ShieldCheck, ShieldPlus, UserCog, UserMinus, Volume1, Volume2, VolumeX } from 'lucide-react'
 import { toast } from 'sonner'
 import { errorMessage, rpc } from '../lib/supabase'
-import { Avatar, ProfileCard, StyledName } from './ui'
+import { Avatar, PeerActions, ProfileCard, StyledName } from './ui'
 import type { Channel, Membership, MemberRole, Profile, Role, RoleFlag } from '../lib/types'
 
 type ModerateAction = 'mute_mic' | 'unmute_mic' | 'kick' | 'move'
@@ -15,10 +15,11 @@ export type MemberVoice = {
 
 // Members sidebar: every row opens a management card — nickname, roles,
 // voice moderation and server removal, each gated by the viewer's permissions.
-export function MembersPanel({ channel, members, roles, memberRoles, can, profile, demo, openRoles, openProfile, changed, voice }: {
+export function MembersPanel({ channel, members, roles, memberRoles, can, profile, demo, openRoles, openProfile, changed, voice, openDM }: {
   channel: Channel; members: Membership[]; roles: Role[]; memberRoles: MemberRole[]
   can: (flag: RoleFlag) => boolean; profile: Profile; demo: boolean
   openRoles: () => void; openProfile: () => void; changed: () => void; voice?: MemberVoice
+  openDM?: (peer: Profile) => void
 }) {
   const [menuFor, setMenuFor] = useState<string | null>(null)
   const [nickDraft, setNickDraft] = useState('')
@@ -112,6 +113,7 @@ export function MembersPanel({ channel, members, roles, memberRoles, can, profil
               {m.nickname && <span className="pc-note">a.k.a. {m.nickname}</span>}
               {(isOwner || m.role === 'moderator' || badges.length > 0) && <div className="role-badges">{isOwner && <i className="role-badge pc-role"><ShieldCheck size={11} />Criador</i>}{m.role === 'moderator' && <i className="role-badge pc-role"><ShieldCheck size={11} />Moderador</i>}{badges.map(r => <i key={r.id} className="role-badge" style={{ color: r.color, borderColor: r.color }}><BadgeCheck size={11} />{r.name}</i>)}</div>}
             </ProfileCard>
+            <PeerActions me={profile} peer={m.profile} demo={demo} onDM={openDM} onDone={() => setMenuFor(null)} />
             {isSelf && <button onClick={() => { setMenuFor(null); openProfile() }}><UserCog size={15} />Editar meu perfil</button>}
             {(isSelf || canNickname) && <div className="nickname-editor">
               <span className="menu-label"><PenLine size={11} /> Apelido no servidor</span>

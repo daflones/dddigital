@@ -178,6 +178,8 @@ select pg_temp.ddtal_assert(public.ddtal_can_access_channel(current_setting('ddt
 select pg_temp.ddtal_assert((select uses=1 from public.ddtal_invites where id=current_setting('ddtal.test.invite')::uuid),'repeated invite join consumes one use');
 select set_config('request.jwt.claims','{"sub":"dd000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
 select pg_temp.ddtal_assert(not public.ddtal_can_access_channel(current_setting('ddtal.test.dm')::uuid),'server member cannot read others DM');
+select set_config('ddtal.test.dm2',public.ddtal_open_dm('dd000000-0000-4000-8000-000000000001')::text,true);
+select pg_temp.ddtal_assert(public.ddtal_can_access_channel(current_setting('ddtal.test.dm2')::uuid),'same-server member opens DM without friendship');
 select pg_temp.ddtal_assert(public.ddtal_storage_channel('malformed/path') is null,'malformed storage path safely rejected');
 reset role;
 select 'PASS: membership, invites, role restrictions, author spoofing, attachment scope, private DMs and RLS' as result;

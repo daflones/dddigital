@@ -207,6 +207,18 @@
 .pc-section{display:block;font-size:9.5px;font-weight:800;letter-spacing:.09em;color:#8f85a8;margin-bottom:5px}
 .pc-bio p{margin:0;font-size:12.5px;color:#cfc6e0;line-height:1.55;white-space:pre-wrap}
 .pc-actions{margin-top:10px}
+
+/* profile-card social actions: DM + friendship */
+.peer-actions{display:flex;flex-wrap:wrap;gap:6px}
+.peer-actions button{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border:1px solid rgba(255,255,255,.14);border-radius:8px;background:rgba(255,255,255,.05);color:#cfc6e0;font-size:11.5px;font-weight:600;cursor:pointer;transition:.15s}
+.peer-actions button:hover{background:rgba(182,154,251,.16);border-color:rgba(182,154,251,.4);color:#fff}
+.peer-actions button.primary{background:var(--card-accent,#b69afb);border-color:transparent;color:#12091f}
+.peer-actions button.primary:hover{filter:brightness(1.12);color:#000}
+.peer-actions button.danger{color:#ff8f8f;border-color:rgba(255,90,90,.25)}
+.peer-actions button.danger:hover{background:rgba(255,90,90,.14);border-color:rgba(255,90,90,.45);color:#ffb0b0}
+.peer-actions button:disabled{opacity:.55;cursor:default}
+.member-card .peer-actions{padding:6px 4px 2px}
+
 .gif-panel.inline{height:320px;padding:0}
 
 /* avatar frames — accent inherits the card/name accent */

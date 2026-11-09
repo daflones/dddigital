@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { X } from 'lucide-react'
-import { avatarUrl } from '../lib/supabase'
-import type { Profile } from '../lib/types'
+import { Check, MessageCircle, UserPlus, UserX, X } from 'lucide-react'
+import { toast } from 'sonner'
+import { avatarUrl, db, errorMessage, rpc } from '../lib/supabase'
+import type { Friendship, Profile } from '../lib/types'
 
 export function Avatar({ name, size = '', online = false, url, frame }: { name: string; size?: string; online?: boolean; url?: string | null; frame?: Profile['avatar_frame'] }) {
   const hue = [...name].reduce((n, c) => n + c.charCodeAt(0), 0) % 360
@@ -45,6 +46,58 @@ export function StyledName({ profile, className = '' }: { profile: Pick<Profile,
     </span>
   }
   return <span className={`styled-name fx-${effect} font-${font} ${className}`} style={style}>{profile.display_name}</span>
+}
+
+// DM + friendship actions shown inside another person's profile card.
+// Loads the current friendship state and offers: send DM (friends or
+// same-server peers), send/accept/cancel/remove friendship.
+export function PeerActions({ me, peer, demo = false, onDM, onDone }: {
+  me: Profile; peer: Profile; demo?: boolean
+  onDM?: (peer: Profile) => void; onDone?: () => void
+}) {
+  const [rel, setRel] = useState<Friendship | null>(null)
+  const [loaded, setLoaded] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const self = me.id === peer.id
+  const load = useCallback(async () => {
+    if (demo || self) return
+    const { data } = await db().from('ddtal_friendships').select('*')
+      .or(`and(requester_id.eq.${me.id},recipient_id.eq.${peer.id}),and(requester_id.eq.${peer.id},recipient_id.eq.${me.id})`)
+      .limit(1)
+    setRel((data?.[0] as Friendship | undefined) || null)
+    setLoaded(true)
+  }, [demo, self, me.id, peer.id])
+  useEffect(() => { void load() }, [load])
+  if (demo || self) return null
+  async function run(task: () => Promise<unknown>) {
+    setBusy(true)
+    try { await task(); await load() } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
+  }
+  const addFriend = () => void run(async () => {
+    await rpc('ddtal_request_friend', { p_handle: peer.handle })
+    toast.success('Solicitação enviada.')
+  })
+  const accept = () => void run(async () => {
+    if (!rel) return
+    await rpc('ddtal_accept_friend', { p_friendship: rel.id })
+    toast.success('Amizade aceita.')
+  })
+  const remove = () => void run(async () => {
+    if (!rel) return
+    const { error } = await db().from('ddtal_friendships').delete().eq('id', rel.id)
+    if (error) throw error
+    toast.success(rel.status === 'accepted' ? 'Amizade removida.' : 'Solicitação cancelada.')
+  })
+  const dm = () => { onDM?.(peer); onDone?.() }
+  return <div className="peer-actions">
+    <button className="primary" disabled={busy} onClick={dm}><MessageCircle size={15} />Enviar mensagem</button>
+    {!loaded ? null : !rel ? <button disabled={busy} onClick={addFriend}><UserPlus size={15} />Adicionar amigo</button>
+      : rel.status === 'accepted' ? <button className="danger" disabled={busy} onClick={remove}><UserX size={15} />Remover amizade</button>
+      : rel.recipient_id === me.id ? <>
+        <button disabled={busy} onClick={accept}><Check size={15} />Aceitar solicitação</button>
+        <button className="danger" disabled={busy} onClick={remove}><X size={15} />Recusar</button></>
+      : <button disabled={busy} onClick={remove}><X size={15} />Cancelar solicitação</button>}
+  </div>
 }
 
 export function Modal({ title, children, close }: { title: string; children: ReactNode; close: () => void }) {
