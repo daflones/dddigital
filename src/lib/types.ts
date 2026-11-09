@@ -9,7 +9,9 @@ export type Channel = { id: string; server_id: string | null; name: string; kind
 export type Message = {
   id: string; channel_id: string; author_id: string; content: string; created_at: string
   attachment_path: string | null; attachment_name: string | null; attachment_type: string | null
+  reply_to?: string | null; edited_at?: string | null
   author?: Profile
+  reply?: { id: string; content: string; attachment_name?: string | null; author?: Profile | null } | null
 }
 export type Friendship = { id: string; requester_id: string; recipient_id: string; status: 'pending' | 'accepted'; peer: Profile }
 export type Membership = { user_id: string; role: 'owner' | 'moderator' | 'member'; nickname?: string | null; profile: Profile }

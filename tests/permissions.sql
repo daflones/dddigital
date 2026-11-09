@@ -29,6 +29,32 @@ select pg_temp.ddtal_assert((select count(*)=1 from public.ddtal_notes where cha
 select pg_temp.ddtal_assert(not public.ddtal_can_edit_notes(current_setting('ddtal.test.channel')::uuid),'member cannot edit lesson notes');
 insert into public.ddtal_messages(channel_id,author_id,content) values(current_setting('ddtal.test.channel')::uuid,auth.uid(),'A legitimate message');
 
+-- Message replies, edits and deletes (RLS filters foreign rows silently; assert state, not errors).
+select set_config('request.jwt.claims','{"sub":"dd000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+insert into public.ddtal_messages(channel_id,author_id,content) values(current_setting('ddtal.test.channel')::uuid,auth.uid(),'Owner announcement');
+select set_config('ddtal.test.owner.msg',(select id::text from public.ddtal_messages where content='Owner announcement'),true);
+select set_config('request.jwt.claims','{"sub":"dd000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
+insert into public.ddtal_messages(channel_id,author_id,content,reply_to) values(current_setting('ddtal.test.channel')::uuid,auth.uid(),'Replying to owner',current_setting('ddtal.test.owner.msg')::uuid);
+select pg_temp.ddtal_assert((select count(*)=1 from public.ddtal_messages where reply_to=current_setting('ddtal.test.owner.msg')::uuid),'member replies to a channel message');
+update public.ddtal_messages set content='Edited by me',edited_at=now() where content='A legitimate message';
+select pg_temp.ddtal_assert((select edited_at is not null from public.ddtal_messages where content='Edited by me'),'member edits own message');
+update public.ddtal_messages set content='Hacked' where id=current_setting('ddtal.test.owner.msg')::uuid;
+select pg_temp.ddtal_assert((select content='Owner announcement' from public.ddtal_messages where id=current_setting('ddtal.test.owner.msg')::uuid),'member cannot edit foreign message');
+delete from public.ddtal_messages where id=current_setting('ddtal.test.owner.msg')::uuid;
+select pg_temp.ddtal_assert((select count(*)=1 from public.ddtal_messages where id=current_setting('ddtal.test.owner.msg')::uuid),'member cannot delete foreign message');
+do $$ begin
+  begin
+    update public.ddtal_messages set author_id='dd000000-0000-4000-8000-000000000001' where content='Edited by me';
+    raise exception 'ASSERTION FAILED: author reassigned';
+  exception when insufficient_privilege then null; end;
+  begin
+    update public.ddtal_messages set reply_to=gen_random_uuid() where content='Edited by me';
+    raise exception 'ASSERTION FAILED: forged reply target';
+  exception when insufficient_privilege or check_violation then null; end;
+end $$;
+delete from public.ddtal_messages where content='Edited by me';
+select pg_temp.ddtal_assert((select count(*)=0 from public.ddtal_messages where content='Edited by me'),'member deletes own message');
+
 do $$ begin
   begin
     insert into public.ddtal_messages(channel_id,author_id,content) values(current_setting('ddtal.test.channel')::uuid,'dd000000-0000-4000-8000-000000000001','Spoof');
