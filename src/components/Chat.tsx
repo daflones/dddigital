@@ -289,7 +289,7 @@ export function Chat({ channel, profile, demo, compact = false, canDeleteOthers 
       <input ref={input} type="file" hidden accept={allowedTypes.join(',')} onChange={e => { chooseFile(e.target.files?.[0]); e.target.value = '' }} />
       <span className="composer-hint">{demo ? 'Prévia interativa · mensagens não são publicadas' : 'Enter envia · Esc limpa · 🎙 grava áudio'}</span>
       {picker && <EmojiGifPicker onEmoji={u => { setContent(v => v + u); textArea.current?.focus() }} onGif={sendGif} close={() => setPicker(false)} />}
-      {viewing && <Modal title="Perfil" close={() => setViewing(null)}>
+      {viewing && <Modal bare close={() => setViewing(null)}>
         <ProfileCard profile={viewing} actions={<PeerActions me={profile} peer={viewing} demo={demo} onDM={onDM} onDone={() => setViewing(null)} />} />
       </Modal>}
     </form>

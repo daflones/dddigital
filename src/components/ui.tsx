@@ -20,7 +20,7 @@ export function ProfileCard({ profile, actions, children }: { profile: Profile; 
   const accent = profile.card_color || profile.name_color || '#b69afb'
   const banner = profile.banner_url && (profile.banner_url.startsWith('http') ? profile.banner_url : avatarUrl(profile.banner_url))
   return <div className={`profile-card fx-card-${profile.card_effect || 'none'}`} style={{ '--card-accent': accent } as React.CSSProperties}>
-    <div className="pc-banner">{banner ? <img src={banner} alt="" /> : <i className="pc-banner-fill" />}</div>
+    <div className="pc-banner">{banner ? <><img className="pc-banner-bg" src={banner} alt="" /><img className="pc-banner-img" src={banner} alt="" /></> : <i className="pc-banner-fill" />}</div>
     <div className="pc-body">
       <Avatar name={profile.display_name} url={profile.avatar_url} size="pc" frame={profile.avatar_frame} />
       <div className="pc-identity">
@@ -100,14 +100,16 @@ export function PeerActions({ me, peer, demo = false, onDM, onDone }: {
   </div>
 }
 
-export function Modal({ title, children, close }: { title: string; children: ReactNode; close: () => void }) {
+export function Modal({ title, children, close, bare = false }: { title?: string; children: ReactNode; close: () => void; bare?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
     ref.current?.showModal()
     return () => ref.current?.close()
   }, [])
-  return <dialog ref={ref} className="modal" onCancel={close} onClick={e => { if (e.target === e.currentTarget) close() }}>
-    <div className="modal-heading"><h2>{title}</h2><button className="icon-button" aria-label="Fechar" onClick={close}><X size={20} /></button></div>
+  return <dialog ref={ref} className={`modal ${bare ? 'bare' : ''}`} onCancel={close} onClick={e => { if (e.target === e.currentTarget) close() }}>
+    {bare
+      ? <button className="icon-button modal-x" aria-label="Fechar" onClick={close}><X size={18} /></button>
+      : <div className="modal-heading"><h2>{title}</h2><button className="icon-button" aria-label="Fechar" onClick={close}><X size={20} /></button></div>}
     {children}
   </dialog>
 }
