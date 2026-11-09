@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { ArrowRight, AudioLines, BookOpen, Check, ChevronDown, ChevronRight, CircleHelp, Code2, Compass, Hash, Headphones, LogOut, Menu, MessageCircle, MessageSquare, Plus, Radio, Search, Settings2, ShieldCheck, Sparkles, Users, UserPlus, Volume2, X } from 'lucide-react'
+import { ArrowRight, AudioLines, BookOpen, Check, ChevronDown, ChevronRight, CircleHelp, Code2, Compass, Hash, Headphones, LogOut, Menu, MessageCircle, MessageSquare, Phone, Plus, Radio, Search, Settings2, ShieldCheck, Sparkles, Users, UserPlus, Volume2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Auth } from './components/Auth'
 import { Avatar, Brand, Modal, StyledName } from './components/ui'
@@ -73,7 +73,7 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
   const [members, setMembers] = useState<Membership[]>(demo ? demoMembers : [])
   const [roles, setRoles] = useState<Role[]>([])
   const [memberRoles, setMemberRoles] = useState<MemberRole[]>([])
-  const [view, setView] = useState<'server' | 'friends'>('server')
+  const [view, setView] = useState<'server' | 'friends' | 'dm'>('server')
   const [panel, setPanel] = useState<'chat' | 'notes' | 'members'>('chat')
   const [dialog, setDialog] = useState<DialogName>(null)
   const [mobileNav, setMobileNav] = useState(false)
@@ -91,7 +91,7 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
   const myRoles = memberRoles.filter(mr => mr.user_id === profile.id).map(mr => roles.find(r => r.id === mr.role_id)).filter((r): r is Role => Boolean(r))
   const can = useCallback((flag: RoleFlag) => staff || myRoles.some(r => r[flag]), [staff, myRoles])
   const voice = channel?.kind === 'voice' || channel?.kind === 'direct'
-  const activeRoomVisible = view === 'server' && room?.channel.id === channel?.id
+  const activeRoomVisible = view !== 'friends' && room?.channel.id === channel?.id
 
   const load = useCallback(async (preferred?: string) => {
     if (demo) return
@@ -151,13 +151,19 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
   }, [serverId, demo, load])
   useEffect(() => {
     setChannelId(previous => {
-      if (channels.some(c => c.id === previous && (c.server_id === serverId || c.kind === 'direct'))) return previous
+      const keep = channels.find(c => c.id === previous)
+      if (keep && (keep.server_id === serverId || (keep.kind === 'direct' && view !== 'server'))) return previous
       return channels.find(c => c.server_id === serverId && c.kind === 'voice')?.id || channels.find(c => c.server_id === serverId)?.id || null
     })
-  }, [channels, serverId])
+  }, [channels, serverId, view])
   const leave = useCallback(() => setRoom(null), [])
   function requireAccount(fn: () => void) { if (demo) { toast.info('Entre na sua conta para conectar sua comunidade.'); exitDemo() } else fn() }
-  function selectChannel(id: string) { setChannelId(id); setView('server'); setMobileNav(false) }
+  function selectChannel(id: string, kind?: Channel['kind']) {
+    setChannelId(id)
+    const target = kind ? { kind } : channels.find(c => c.id === id)
+    setView(target?.kind === 'direct' ? 'dm' : 'server')
+    setMobileNav(false)
+  }
   function selectServer(id: string) { setServerId(id); setChannelId(null); setView('server') }
   async function joinById(channelId: string) {
     let target = channels.find(c => c.id === channelId)
@@ -166,7 +172,7 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
       if (data) { target = data as Channel; setChannels(current => [...current.filter(c => c.id !== channelId), target!]) }
     }
     if (!target) return
-    selectChannel(target.id)
+    selectChannel(target.id, target.kind)
     await join(target)
   }
   const refreshRoles = useCallback(async () => {
@@ -232,7 +238,7 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
       if (error) throw error
       const dm: Channel = { ...data, name: peer.display_name }
       setChannels(current => [...current.filter(c => c.id !== id), dm])
-      selectChannel(id)
+      selectChannel(id, 'direct')
       if (call) await join(dm)
     } catch (e) { toast.error(errorMessage(e)) }
   }
@@ -243,24 +249,31 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
   }
 
   return <div className="app-shell">
-    <aside className="server-rail"><button className="home-button" title="Discodigital" aria-label="Início" onClick={() => { setView('server'); setMobileNav(!mobileNav) }}><img src="/favicon.svg" alt="" /></button><div className="rail-divider" />{servers.map(s => <button key={s.id} className={`server-button ${serverId === s.id && view === 'server' ? 'selected' : ''}`} title={s.name} aria-label={s.name} onClick={() => selectServer(s.id)}>{s.icon_url ? <img className="server-icon-img" src={serverIconUrl(s.icon_url)!} alt="" /> : s.name.toLowerCase().includes('f.dev') ? <span>F<span className="dot">.</span></span> : s.name.slice(0, 2).toUpperCase()}<i /></button>)}<button className="rail-add" title="Criar servidor" aria-label="Criar servidor" onClick={() => requireAccount(() => setDialog('server'))}><Plus size={23} /></button><button className={`rail-friends ${view === 'friends' ? 'selected' : ''}`} title="Amigos" aria-label="Amigos" onClick={() => { setView('friends'); setMobileNav(false) }}><Compass size={22} /></button><div className="rail-bottom"><button title="Como funciona" aria-label="Como funciona" onClick={() => setDialog('help')}><CircleHelp size={21} /></button><button title="Sair" aria-label="Sair" onClick={signOut}><LogOut size={20} /></button></div></aside>
+    <aside className="server-rail"><button className="home-button" title="Início — suas conversas" aria-label="Início" onClick={() => { setView('friends'); setMobileNav(!mobileNav) }}><img src="/favicon.svg" alt="" /></button><div className="rail-divider" />{servers.map(s => <button key={s.id} className={`server-button ${serverId === s.id && view === 'server' ? 'selected' : ''}`} title={s.name} aria-label={s.name} onClick={() => selectServer(s.id)}>{s.icon_url ? <img className="server-icon-img" src={serverIconUrl(s.icon_url)!} alt="" /> : s.name.toLowerCase().includes('f.dev') ? <span>F<span className="dot">.</span></span> : s.name.slice(0, 2).toUpperCase()}<i /></button>)}<button className="rail-add" title="Criar servidor" aria-label="Criar servidor" onClick={() => requireAccount(() => setDialog('server'))}><Plus size={23} /></button><button className={`rail-friends ${view === 'friends' ? 'selected' : ''}`} title="Amigos" aria-label="Amigos" onClick={() => { setView('friends'); setMobileNav(false) }}><Compass size={22} /></button><div className="rail-bottom"><button title="Como funciona" aria-label="Como funciona" onClick={() => setDialog('help')}><CircleHelp size={21} /></button><button title="Sair" aria-label="Sair" onClick={signOut}><LogOut size={20} /></button></div></aside>
     {mobileNav && <button className="mobile-backdrop" aria-label="Fechar canais" onClick={() => setMobileNav(false)} />}
     <aside className={`channel-sidebar ${mobileNav ? 'mobile-open' : ''}`}>
       <div className="sidebar-brand"><Brand /><button className="icon-button mobile-only" aria-label="Fechar menu" onClick={() => setMobileNav(false)}><X size={18} /></button></div>
+      {view === 'server' ? <>
       <button className="server-heading" onClick={() => currentServer ? (staff ? setDialog('serverSettings') : setDialog('help')) : requireAccount(() => setDialog('server'))}><div className="server-mini-icon">{currentServer?.icon_url ? <img src={serverIconUrl(currentServer.icon_url)!} alt="" /> : <Code2 size={21} />}</div><div><strong>{currentServer ? <StyledName profile={{ display_name: currentServer.name, name_color: currentServer.name_color, name_effect: currentServer.name_effect, name_font: currentServer.name_font }} /> : 'Seu espaço'}</strong><span>{demo ? 'Comunidade de demonstração' : 'Sua comunidade, conectada'}</span></div>{staff && currentServer ? <Settings2 size={15} /> : <ChevronDown size={15} />}</button>
       <div className="sidebar-scroll">
         <div className="community-banner"><span><Sparkles size={14} /> CONSTRUA SEU PRÓXIMO NÍVEL</span><strong>30 dias. Infinitas possibilidades.</strong><p>Uma comunidade. Um passo por dia.</p><div className="community-progress">{Array.from({ length: 30 }, (_, i) => <i key={i} className={i < 7 ? 'filled' : ''} />)}</div><small>DA PRIMEIRA IDEIA AO PRIMEIRO DEPLOY</small></div>
-        <button className={`sidebar-nav-item ${view === 'friends' ? 'active' : ''}`} onClick={() => { setView('friends'); setMobileNav(false) }}><Users size={18} />Amigos<ArrowRight size={15} /></button>
+        <button className="sidebar-nav-item" onClick={() => { setView('friends'); setMobileNav(false) }}><Users size={18} />Amigos<ArrowRight size={15} /></button>
         <div className="channel-group"><div className="group-heading"><span><ChevronDown size={12} />CANAIS DE TEXTO</span>{can('manage_channels') && <button aria-label="Criar canal de texto" title="Criar canal" onClick={() => requireAccount(() => setDialog('channel'))}><Plus size={15} /></button>}</div>{channels.filter(c => c.server_id === serverId && c.kind === 'text').map(c => <button className={`channel-link ${view === 'server' && channelId === c.id ? 'active' : ''}`} key={c.id} onClick={() => selectChannel(c.id)}><Hash size={19} /><span>{c.name}</span>{c.name === 'avisos' && <span className="channel-tiny-dot" />}</button>)}</div>
         <div className="channel-group"><div className="group-heading"><span><ChevronDown size={12} />SALAS DE VOZ</span>{can('manage_channels') && <button title="Criar sala" aria-label="Criar sala de voz" onClick={() => requireAccount(() => setDialog('channel'))}><Plus size={15} /></button>}</div>{channels.filter(c => c.server_id === serverId && c.kind === 'voice').map(c => <div key={c.id}><button className={`channel-link voice-link ${view === 'server' && channelId === c.id ? 'active' : ''}`} onClick={() => selectChannel(c.id)}><Volume2 size={19} /><span>{c.name}</span>{room?.channel.id === c.id && <AudioLines size={16} className="green" />}</button>{demo && c.id === 'demo-class' && <div className="preview-members">{demoMembers.slice(0, 3).map(m => <div key={m.user_id}><Avatar name={m.profile.display_name} size="tiny" /><span>{m.profile.display_name}</span>{m.role === 'owner' && <span className="host-label">HOST</span>}</div>)}<span className="preview-caption">Participantes ilustrativos</span></div>}</div>)}</div>
-        {channels.some(c => c.kind === 'direct') && <div className="channel-group"><div className="group-heading"><span>MENSAGENS DIRETAS</span></div>{channels.filter(c => c.kind === 'direct').map(c => <button key={c.id} className={`channel-link ${channelId === c.id && view === 'server' ? 'active' : ''}`} onClick={() => selectChannel(c.id)}><MessageCircle size={18} /><span>{c.name}</span></button>)}</div>}
         {currentServer && <button className="invite-sidebar" onClick={() => requireAccount(() => can('manage_invites') ? setDialog('invite') : toast.info('Peça um convite à equipe do servidor.'))}><UserPlus size={17} /><span>Convide sua comunidade</span><Plus size={14} /></button>}
       </div>
-      {room && <button className="connected-indicator" onClick={() => selectChannel(room.channel.id)}><AudioLines size={18} /><span><strong>Conectado à sala</strong><small>{room.channel.name}</small></span><ChevronRight size={15} /></button>}
+      </> : <>
+      <button className="server-heading" onClick={() => requireAccount(() => setDialog('profile'))}><div className="server-mini-icon"><Avatar name={profile.display_name} url={profile.avatar_url} size="small" frame={profile.avatar_frame} /></div><div><strong><StyledName profile={profile} /></strong><span>Seu espaço pessoal</span></div><Settings2 size={15} /></button>
+      <div className="sidebar-scroll">
+        <button className={`sidebar-nav-item ${view === 'friends' ? 'active' : ''}`} onClick={() => { setView('friends'); setMobileNav(false) }}><Users size={18} />Amigos<ArrowRight size={15} /></button>
+        <div className="channel-group"><div className="group-heading"><span><ChevronDown size={12} />MENSAGENS DIRETAS</span></div>{channels.filter(c => c.kind === 'direct').map(c => <button key={c.id} className={`channel-link ${view === 'dm' && channelId === c.id ? 'active' : ''}`} onClick={() => selectChannel(c.id, 'direct')}><MessageCircle size={18} /><span>{c.name}</span></button>)}{!channels.some(c => c.kind === 'direct') && <p className="sidebar-empty">Nenhuma conversa ainda. Abra o perfil de alguém e envie uma mensagem.</p>}</div>
+      </div>
+      </>}
+      {room && <button className="connected-indicator" onClick={() => selectChannel(room.channel.id, room.channel.kind)}><AudioLines size={18} /><span><strong>Conectado à sala</strong><small>{room.channel.name}</small></span><ChevronRight size={15} /></button>}
       <div className="user-dock"><button className="profile-button" onClick={() => requireAccount(() => setDialog('profile'))}><Avatar name={profile.display_name} url={profile.avatar_url} size="small" online frame={profile.avatar_frame} /><span><strong><StyledName profile={profile} /></strong><small>{profile.status_text || (demo ? 'Explorando o espaço' : 'Pronto para conectar')}</small></span></button><button className="icon-button" title="Meu perfil" aria-label="Meu perfil" onClick={() => requireAccount(() => setDialog('profile'))}><Settings2 size={18} /></button></div>
     </aside>
     <div className="workspace">
-      <header className="workspace-header"><div><button className="icon-button mobile-only" aria-label="Abrir canais" onClick={() => setMobileNav(true)}><Menu size={21} /></button>{view === 'friends' ? <Users size={21} /> : voice ? <Volume2 size={22} /> : <Hash size={22} />}<strong>{view === 'friends' ? 'Amigos' : channel?.name || 'Bem-vindo ao seu espaço'}</strong>{view === 'server' && <><span className="header-separator" /><span className="channel-topic">{channel?.topic || 'Boas conexões começam aqui.'}</span></>}</div><div>{demo && <span className="demo-tag">MODO DEMONSTRAÇÃO</span>}<button className="icon-button" aria-label="Buscar mensagens" title="Buscar mensagens" disabled={!channel || view === 'friends'} onClick={() => requireAccount(() => setDialog('search'))}><Search size={19} /></button><button className="icon-button" aria-label="Ver membros" title="Ver membros" onClick={() => { setPanel('members'); setMobilePanel(!mobilePanel) }}><Users size={20} /></button>{demo ? <button className="header-login" onClick={exitDemo}>Entrar <ArrowRight size={14} /></button> : <span className="private-label"><ShieldCheck size={14} />Seu espaço</span>}</div></header>
+      <header className="workspace-header"><div><button className="icon-button mobile-only" aria-label="Abrir canais" onClick={() => setMobileNav(true)}><Menu size={21} /></button>{view === 'friends' ? <Users size={21} /> : channel?.kind === 'direct' ? <MessageCircle size={22} /> : voice ? <Volume2 size={22} /> : <Hash size={22} />}<strong>{view === 'friends' ? 'Amigos' : channel?.name || 'Bem-vindo ao seu espaço'}</strong>{view === 'server' && <><span className="header-separator" /><span className="channel-topic">{channel?.topic || 'Boas conexões começam aqui.'}</span></>}{view === 'dm' && <><span className="header-separator" /><span className="channel-topic">Conversa privada — só vocês dois.</span></>}</div><div>{demo && <span className="demo-tag">MODO DEMONSTRAÇÃO</span>}{view === 'dm' && channel && <button className="icon-button" aria-label="Ligar" title={room?.channel.id === channel.id ? 'Voltar para a chamada' : 'Ligar'} onClick={() => room?.channel.id === channel.id ? selectChannel(channel.id, 'direct') : void join()}><Phone size={18} className={room?.channel.id === channel.id ? 'green' : ''} /></button>}<button className="icon-button" aria-label="Buscar mensagens" title="Buscar mensagens" disabled={!channel || view === 'friends'} onClick={() => requireAccount(() => setDialog('search'))}><Search size={19} /></button><button className="icon-button" aria-label="Ver membros" title="Ver membros" onClick={() => { setPanel('members'); setMobilePanel(!mobilePanel) }}><Users size={20} /></button>{demo ? <button className="header-login" onClick={exitDemo}>Entrar <ArrowRight size={14} /></button> : <span className="private-label"><ShieldCheck size={14} />Seu espaço</span>}</div></header>
       {inviteError && <div className="workspace-alert" role="alert">{inviteError}<button className="text-button" onClick={() => setInviteError('')}>Fechar</button></div>}
       {loadError && <div className="workspace-alert" role="alert">{loadError}<button className="text-button" onClick={() => void load()}>Tentar novamente</button></div>}
       <div className={`workspace-body ${voice && view === 'server' ? 'with-panel' : ''}`}>
@@ -270,7 +283,7 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
             moveTargets={channels.filter(c => c.kind === 'voice' && c.id !== room.channel.id)}
             onParticipants={setRoomParticipants}
             moderate={(action, targetUserId, destinationChannelId) => moderate(action, room.channel.id, targetUserId, destinationChannelId)} /></Suspense></div>}
-          {view === 'friends' ? <Friends profile={profile} demo={demo} openDM={openDM} /> : !channel ? <div className="empty-workspace"><div className="empty-logo"><AudioLines size={44} /></div><span className="eyebrow">SEU ESPAÇO PARA IR ALÉM</span><h1>{loading ? 'Preparando suas conexões…' : 'Toda comunidade começa com alguém.'}</h1><p>{loading ? 'Só um instante.' : 'Crie um servidor para sua turma ou abra o link de convite que recebeu.'}</p>{!loading && <button className="primary" onClick={() => requireAccount(() => setDialog('server'))}><Plus size={18} />Criar meu primeiro servidor</button>}</div> : voice ? !activeRoomVisible && <ClassroomLobby channel={channel} members={channel.kind === 'direct' ? [] : members} demo={demo} joining={joining} join={() => void join()} /> : <Chat key={channel.id} channel={channel} profile={profile} demo={demo} canDeleteOthers={can('kick_members')} onDM={peer => void openDM(peer)} />}
+          {view === 'friends' ? <Friends profile={profile} demo={demo} openDM={openDM} /> : channel?.kind === 'direct' && view === 'dm' ? (!activeRoomVisible && <Chat key={channel.id} channel={channel} profile={profile} demo={demo} canDeleteOthers={false} onDM={peer => void openDM(peer)} />) : !channel ? <div className="empty-workspace"><div className="empty-logo"><AudioLines size={44} /></div><span className="eyebrow">SEU ESPAÇO PARA IR ALÉM</span><h1>{loading ? 'Preparando suas conexões…' : 'Toda comunidade começa com alguém.'}</h1><p>{loading ? 'Só um instante.' : 'Crie um servidor para sua turma ou abra o link de convite que recebeu.'}</p>{!loading && <button className="primary" onClick={() => requireAccount(() => setDialog('server'))}><Plus size={18} />Criar meu primeiro servidor</button>}</div> : voice ? !activeRoomVisible && <ClassroomLobby channel={channel} members={channel.kind === 'direct' ? [] : members} demo={demo} joining={joining} join={() => void join()} /> : <Chat key={channel.id} channel={channel} profile={profile} demo={demo} canDeleteOthers={can('kick_members')} onDM={peer => void openDM(peer)} />}
         </main>
         {voice && channel && view === 'server' && <aside className={`conversation-panel ${mobilePanel ? 'mobile-panel-open' : ''}`}><div className="panel-tabs"><button className={panel === 'chat' ? 'active' : ''} onClick={() => setPanel('chat')}><MessageSquare size={15} />Chat</button><button className={panel === 'notes' ? 'active' : ''} onClick={() => setPanel('notes')}><BookOpen size={15} />Notas</button><button className={panel === 'members' ? 'active' : ''} onClick={() => setPanel('members')}><Users size={15} />Pessoas</button><button className="icon-button mobile-only" aria-label="Fechar painel" onClick={() => setMobilePanel(false)}><X size={16} /></button></div>{panel === 'chat' ? <><div className="panel-subheading"><span>O PAPO CONTINUA AQUI</span><MessageCircle size={14} /></div><Chat key={channel.id} channel={channel} profile={profile} demo={demo} compact canDeleteOthers={can('kick_members')} onDM={peer => void openDM(peer)} /></> : panel === 'notes' ? <Notes key={channel.id} channelId={channel.id} userId={profile.id} canEdit={can('edit_notes') || channel.kind === 'direct'} demo={demo} /> : <MembersPanel channel={channel} members={members} roles={roles} memberRoles={memberRoles} can={can} profile={profile} demo={demo} openRoles={() => setDialog('roles')} openProfile={() => setDialog('profile')} changed={() => void refreshRoles()} openDM={peer => void openDM(peer)}
             voice={room ? { channelId: room.channel.id, inRoom: (id: string) => roomParticipants.includes(id), moveTargets: channels.filter(c => c.kind === 'voice' && c.id !== room.channel.id), moderate } : undefined} />}<div className="panel-footer"><span className="tiny-brand">d.</span><span>Conexões que fazem a diferença.</span></div></aside>}
