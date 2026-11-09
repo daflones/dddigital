@@ -167,6 +167,13 @@ do $$ begin
     if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
   end;
 end $$;
+-- manage_server: a role flag lets a regular member restyle the server.
+select set_config('request.jwt.claims','{"sub":"dd000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select set_config('ddtal.test.brandrole',public.ddtal_create_role(current_setting('ddtal.test.server')::uuid,'Designer','#4dc3ff','{"manage_server":true}'::jsonb)::text,true);
+select public.ddtal_assign_role(current_setting('ddtal.test.brandrole')::uuid,'dd000000-0000-4000-8000-000000000002');
+select set_config('request.jwt.claims','{"sub":"dd000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
+update public.ddtal_servers set name='Restyled by role' where id=current_setting('ddtal.test.server')::uuid;
+select pg_temp.ddtal_assert((select name='Restyled by role' from public.ddtal_servers where id=current_setting('ddtal.test.server')::uuid),'manage_server role restyles the server');
 select set_config('request.jwt.claims','{"sub":"dd000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
 select pg_temp.ddtal_assert((select nickname='Estagiário' from public.ddtal_members where server_id=current_setting('ddtal.test.server')::uuid and user_id='dd000000-0000-4000-8000-000000000002'),'own nickname persisted');
 select public.ddtal_set_nickname(current_setting('ddtal.test.server')::uuid,'dd000000-0000-4000-8000-000000000002','Monitor');

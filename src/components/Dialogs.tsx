@@ -248,6 +248,7 @@ const ROLE_FLAGS: { flag: RoleFlag; label: string; hint: string }[] = [
   { flag: 'moderate_voice', label: 'Moderar voz', hint: 'Silenciar, expulsar e mover pessoas nas salas' },
   { flag: 'manage_channels', label: 'Gerenciar canais', hint: 'Criar canais de texto e voz' },
   { flag: 'manage_roles', label: 'Gerenciar cargos', hint: 'Criar e atribuir cargos' },
+  { flag: 'manage_server', label: 'Gerenciar servidor', hint: 'Editar nome, ícone, descrição e aparência do servidor' },
   { flag: 'manage_invites', label: 'Gerenciar convites', hint: 'Gerar e revogar links de convite' },
   { flag: 'kick_members', label: 'Expulsar membros', hint: 'Remover pessoas do servidor' },
   { flag: 'manage_nicknames', label: 'Gerenciar apelidos', hint: 'Alterar o apelido de outros membros' },

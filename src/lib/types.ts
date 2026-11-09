@@ -29,11 +29,11 @@ export type Message = {
 }
 export type Friendship = { id: string; requester_id: string; recipient_id: string; status: 'pending' | 'accepted'; peer: Profile }
 export type Membership = { user_id: string; role: 'owner' | 'moderator' | 'member'; nickname?: string | null; profile: Profile }
-export type RoleFlag = 'moderate_voice' | 'manage_channels' | 'manage_roles' | 'manage_invites' | 'kick_members' | 'edit_notes' | 'manage_nicknames'
+export type RoleFlag = 'moderate_voice' | 'manage_channels' | 'manage_roles' | 'manage_invites' | 'kick_members' | 'edit_notes' | 'manage_nicknames' | 'manage_server'
 export type Role = {
   id: string; server_id: string; name: string; color: string; position: number
   moderate_voice: boolean; manage_channels: boolean; manage_roles: boolean
-  manage_invites: boolean; kick_members: boolean; edit_notes: boolean; manage_nicknames: boolean
+  manage_invites: boolean; kick_members: boolean; edit_notes: boolean; manage_nicknames: boolean; manage_server: boolean
 }
 export type MemberRole = { user_id: string; role_id: string }
 export type RoomCredentials = { token: string; url: string; channel: Channel }
