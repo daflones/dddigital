@@ -10,7 +10,9 @@
 - Google e e-mail já estavam habilitados no Auth compartilhado.
 - CAPTCHA Turnstile já estava habilitado e foi preservado.
 - URLs locais `http://localhost:5173/**` e `http://127.0.0.1:5173/**` acrescentadas à allowlist. As URLs existentes e o Site URL do SeekerAI foram preservados.
-- Credenciais LiveKit de produção e domínio público ainda precisam ser configurados.
+- Domínio de produção definido: `https://discodigital.daforja.com.br`. O DNS já aponta para a Cloudflare; o hostname responde quando o Easypanel associar a origem e emitir o certificado.
+- Redirect `https://discodigital.daforja.com.br/**` já acrescentado ao Supabase Auth e `DDTAL_ALLOWED_ORIGINS` já inclui o domínio de produção nas secrets das Edge Functions.
+- Credenciais LiveKit de produção ainda precisam ser configuradas para ativar chamadas reais.
 - Build local e Docker/Nginx validados. Testes com duas contas verificaram Realtime, anexos originais, notas, amigos e conversas privadas. Um SFU LiveKit local validou voz, vídeo, transmissão sintética, ponteiro, desenhos e mão levantada; a transmissão entre redes e os fluxos CAPTCHA/Google do domínio final continuam pendentes.
 
 ## 2. Frontend no Easypanel
@@ -26,10 +28,10 @@
    VITE_TURNSTILE_SITE_KEY=<site key pública do widget já usado no projeto>
    ```
 
-   O Dockerfile declara esses `ARG`. Não basta definir variáveis no container depois de compilar: confira se a configuração do Easypanel as entrega ao build.
+   O Dockerfile declara esses `ARG`. Não basta definir variáveis no container depois de compilar: confira se a configuração do Easypanel as entrega ao build. No Easypanel, essas variáveis geralmente ficam na aba **Environment** do app — certifique-se de que o campo esteja marcado como **build arg / deploy-time**; senão edite o Dockerfile para embutir os valores ou use `ENV` durante o build.
 
-5. Porta interna: **80**. Healthcheck HTTP: **`/health`**.
-6. Adicione um domínio HTTPS, apontando seu DNS para o servidor. HTTPS é necessário para câmera, microfone e captura de tela fora do localhost.
+5. Porta interna: **80**. Healthcheck HTTP: **`/health`** (o Dockerfile já declara `HEALTHCHECK`; configure o healthcheck do Easypanel também se quiser verificação externa).
+6. Adicione o domínio **`discodigital.daforja.com.br`** ao app no Easypanel (aba Domains) e habilite HTTPS/Let's Encrypt. O DNS já está na Cloudflare — confira se o proxy não impede o ACME; em caso de erro de certificado, desative temporariamente o proxy (nuvem cinza) ou use validação DNS.
 7. Faça o deploy e ative o rebuild automático em pushes na branch `main`.
 
 O container não guarda arquivos, banco ou segredos administrativos. Nginx fornece fallback da SPA, cache dos assets com hash, headers de proteção e CSP compatível com Supabase, LiveKit e Turnstile. Os hosts HTTPS/WSS de conexão são amplos porque o endpoint de mídia é configurável; podem ser restringidos ao domínio LiveKit escolhido.
@@ -43,15 +45,15 @@ docker run --rm -p 8080:80 ddtal-web:local
 
 ## 3. Autenticação no domínio definitivo
 
-No Supabase → Authentication → URL Configuration, **acrescente**:
+Já configurado no Supabase → Authentication → URL Configuration:
 
 ```text
-https://SEU-DOMINIO/**
+https://discodigital.daforja.com.br/**
 ```
 
 Não substitua o Site URL do SeekerAI nem apague os redirects existentes. O aplicativo passa `redirectTo` explicitamente, inclusive nos convites e na recuperação de senha.
 
-No Cloudflare → Turnstile, autorize o hostname definitivo no widget correspondente à site key pública. A secret key já configurada no Supabase precisa corresponder a esse widget. Não desative a proteção para fazer o login funcionar.
+**Pendente manual:** no Cloudflare → Turnstile, autorize o hostname `discodigital.daforja.com.br` no widget correspondente à site key pública usada no build. A secret key já configurada no Supabase precisa corresponder a esse widget. Não desative a proteção para fazer o login funcionar — sem o hostname no widget, login por senha/cadastro/recuperação exibirá erro de CAPTCHA; o login Google continuará funcionando.
 
 O provedor Google já está habilitado no Supabase. Seu callback do Google continua sendo:
 
@@ -71,7 +73,7 @@ Crie um projeto LiveKit e obtenha a URL WebSocket, API key e API secret. As cred
 DDTAL_LIVEKIT_URL=wss://SEU-PROJETO.livekit.cloud
 DDTAL_LIVEKIT_API_KEY=<api key>
 DDTAL_LIVEKIT_API_SECRET=<api secret>
-DDTAL_ALLOWED_ORIGINS=https://SEU-DOMINIO,http://localhost:5173,http://127.0.0.1:5173
+DDTAL_ALLOWED_ORIGINS=https://discodigital.daforja.com.br,http://localhost:5173,http://127.0.0.1:5173
 ```
 
 Não inclua barras finais nas origens. CORS compara a origem exata. Acrescente outros domínios explicitamente, se forem usados.

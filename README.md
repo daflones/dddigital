@@ -64,7 +64,7 @@ Para ativar mídia, configure no Supabase:
 DDTAL_LIVEKIT_URL=wss://SEU-PROJETO.livekit.cloud
 DDTAL_LIVEKIT_API_KEY=...
 DDTAL_LIVEKIT_API_SECRET=...
-DDTAL_ALLOWED_ORIGINS=https://SEU-DOMINIO,http://localhost:5173
+DDTAL_ALLOWED_ORIGINS=https://discodigital.daforja.com.br,http://localhost:5173
 ```
 
 O Supabase não retransmite vídeo. A arquitetura com um único container no Easypanel usa LiveKit Cloud para isso. A alternativa é hospedar um servidor LiveKit separado, com UDP/TCP e TURN adequadamente configurados.
