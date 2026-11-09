@@ -2,13 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { LiveKitRoom, RoomAudioRenderer, VideoTrack, useConnectionState, useLocalParticipant, useParticipants, useRoomContext, useTracks } from '@livekit/components-react'
 import type { TrackReference } from '@livekit/components-react'
-import { ConnectionState, RoomEvent, ScreenSharePresets, Track } from 'livekit-client'
+import { ConnectionState, LocalAudioTrack, RoomEvent, ScreenSharePresets, Track } from 'livekit-client'
 import type { RemoteParticipant } from 'livekit-client'
 import { BadgeCheck, Camera, CameraOff, Hand, Maximize2, Mic, MicOff, MonitorUp, MousePointer2, Pencil, PhoneOff, PictureInPicture2, Trash2, UserMinus, Volume2, VolumeX, Volume1 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Avatar } from './ui'
 import type { Channel, RoomCredentials } from '../lib/types'
 import { errorMessage } from '../lib/supabase'
+import { createMicChain, loadVoice, VOICE_EVENT } from '../lib/voice'
+import type { MicChain } from '../lib/voice'
 import '@livekit/components-styles'
 
 type Point = { x: number; y: number }
@@ -39,7 +41,7 @@ export default function LiveRoom({ credentials, leave, canModerate, moveTargets,
   canModerate: boolean; moveTargets: Channel[]; moderate: Moderate
   onParticipants?: (identities: string[]) => void
 }) {
-  return <LiveKitRoom serverUrl={credentials.url} token={credentials.token} connect audio video={false}
+  return <LiveKitRoom serverUrl={credentials.url} token={credentials.token} connect audio={false} video={false}
     options={{ adaptiveStream: true, dynacast: true, publishDefaults: { screenShareEncoding: ScreenSharePresets.h1080fps30.encoding, screenShareSimulcastLayers: [ScreenSharePresets.h720fps15] } }}
     onError={error => toast.error(errorMessage(error))} onDisconnected={leave} className="live-room">
     <RoomView canModerate={canModerate} moveTargets={moveTargets} moderate={moderate} onParticipants={onParticipants} />
@@ -164,7 +166,7 @@ function FloatingPanel({ remoteScreen, localScreen, raised, onClose, canModerate
       </div>}
     </div>)}</div>
     <div className="pip-controls">
-      <button className={!isMicrophoneEnabled ? 'off' : ''} disabled={busy} title={isMicrophoneEnabled ? 'Desativar microfone' : 'Ativar microfone'} onClick={() => void action(() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled))}>{isMicrophoneEnabled ? <Mic size={16} /> : <MicOff size={16} />}</button>
+      <button className={!isMicrophoneEnabled ? 'off' : ''} disabled={busy} title={isMicrophoneEnabled ? 'Desativar microfone' : 'Ativar microfone'} onClick={() => void action(async () => { const t = localParticipant.getTrackPublication(Track.Source.Microphone)?.track; if (t) await (t.isMuted ? t.unmute() : t.mute()) })}>{isMicrophoneEnabled ? <Mic size={16} /> : <MicOff size={16} />}</button>
       <button disabled={busy} title={isCameraEnabled ? 'Desativar câmera' : 'Ativar câmera'} onClick={() => void action(() => localParticipant.setCameraEnabled(!isCameraEnabled))}>{isCameraEnabled ? <Camera size={16} /> : <CameraOff size={16} />}</button>
       <button className={isScreenShareEnabled ? 'active' : ''} disabled={busy} title={isScreenShareEnabled ? 'Parar de compartilhar' : 'Compartilhar tela'} onClick={() => void action(() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled, { audio: true, resolution: { width: 1920, height: 1080, frameRate: 30 }, contentHint: 'text' }))}><MonitorUp size={16} /></button>
       <button className="hangup" title="Sair da sala" onClick={() => void room.disconnect()}><PhoneOff size={16} /></button>
@@ -263,6 +265,69 @@ function RoomView({ canModerate, moveTargets, moderate, onParticipants }: { canM
     await localParticipant.publishData(encoder.encode(meRaised ? 'down' : 'up'), { reliable: true, topic: 'ddtal-hand' })
     setRaised(current => meRaised ? current.filter(id => id !== localParticipant.identity) : [...current, localParticipant.identity])
   }
+  // Voice pipeline: a processed mic (gain + noise gate per user settings) is
+  // published instead of LiveKit's raw capture; output device/volume apply to
+  // the rendered remote audio elements. Settings changes rebuild live.
+  const chainRef = useRef<MicChain | null>(null)
+  const [voiceTick, setVoiceTick] = useState(0)
+  useEffect(() => {
+    const onChange = () => setVoiceTick(v => v + 1)
+    window.addEventListener(VOICE_EVENT, onChange)
+    return () => window.removeEventListener(VOICE_EVENT, onChange)
+  }, [])
+  const micTrack = () => localParticipant.getTrackPublication(Track.Source.Microphone)?.track as LocalAudioTrack | undefined
+  const toggleMic = () => { const t = micTrack(); return t ? (t.isMuted ? t.unmute() : t.mute()) : Promise.resolve() }
+  useEffect(() => {
+    if (state !== ConnectionState.Connected) return
+    let cancelled = false
+    async function setup() {
+      const s = loadVoice()
+      const chain = await createMicChain(s)
+      if (cancelled) { chain.stop(); return }
+      const track = new LocalAudioTrack(chain.stream.getAudioTracks()[0])
+      await localParticipant.publishTrack(track, { source: Track.Source.Microphone })
+      chainRef.current = chain
+      if (s.ptt) await track.mute()
+    }
+    void setup().catch(() => toast.error('Não consegui abrir seu microfone. Confira o dispositivo e a permissão.'))
+    return () => {
+      cancelled = true
+      const t = micTrack()
+      if (t) void localParticipant.unpublishTrack(t)
+      chainRef.current?.stop()
+      chainRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, voiceTick])
+  // Push-to-talk: hold the bound key to unmute, release to mute again.
+  useEffect(() => {
+    const s = loadVoice()
+    if (!s.ptt || state !== ConnectionState.Connected) return
+    const typing = (e: KeyboardEvent) => (e.target as HTMLElement | null)?.closest?.('input,textarea,select,[contenteditable="true"]')
+    const down = (e: KeyboardEvent) => { if (e.code === s.pttKey && !e.repeat && !typing(e)) { const t = micTrack(); if (t?.isMuted) void t.unmute() } }
+    const up = (e: KeyboardEvent) => { if (e.code === s.pttKey) { const t = micTrack(); if (t && !t.isMuted) void t.mute() } }
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, voiceTick])
+  // Output device + volume on the rendered remote audio elements.
+  useEffect(() => {
+    if (state !== ConnectionState.Connected) return
+    const s = loadVoice()
+    const root = stage.current?.closest('.live-container') || document.body
+    const apply = (el: HTMLMediaElement) => {
+      el.volume = Math.min(1, s.outVolume)
+      const sink = (el as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> }).setSinkId
+      if (s.outputId && sink) void sink.call(el, s.outputId).catch(() => {})
+    }
+    const applyAll = () => root.querySelectorAll('audio').forEach(apply)
+    applyAll()
+    const observer = new MutationObserver(applyAll)
+    observer.observe(root, { childList: true, subtree: true })
+    return () => observer.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, voiceTick])
   return <>
     <RoomAudioRenderer muted={deafened} />
     {pipWindow && createPortal(<FloatingPanel remoteScreen={remoteScreen} localScreen={localScreen} raised={raised} canModerate={canModerate} moveTargets={moveTargets} moderate={moderate} onClose={() => pipWindow.close()} />, pipWindow.document.body)}
@@ -282,7 +347,7 @@ function RoomView({ canModerate, moveTargets, moderate, onParticipants }: { canM
       </div>
     })}</div>
     <div className="call-controls">
-      <div><button className={!isMicrophoneEnabled ? 'off' : ''} disabled={busy} title={isMicrophoneEnabled ? 'Desativar microfone' : 'Ativar microfone'} aria-label={isMicrophoneEnabled ? 'Desativar microfone' : 'Ativar microfone'} onClick={() => void action(() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled))}>{isMicrophoneEnabled ? <Mic /> : <MicOff />}</button><button disabled={busy} title={isCameraEnabled ? 'Desativar câmera' : 'Ativar câmera'} aria-label={isCameraEnabled ? 'Desativar câmera' : 'Ativar câmera'} onClick={() => void action(() => localParticipant.setCameraEnabled(!isCameraEnabled))}>{isCameraEnabled ? <Camera /> : <CameraOff />}</button><button title={deafened ? 'Ouvir a sala' : 'Silenciar áudio recebido'} aria-label={deafened ? 'Ouvir a sala' : 'Silenciar áudio recebido'} onClick={() => setDeafened(!deafened)}>{deafened ? <VolumeX /> : <Volume2 />}</button></div>
+      <div><button className={!isMicrophoneEnabled ? 'off' : ''} disabled={busy} title={isMicrophoneEnabled ? 'Desativar microfone' : 'Ativar microfone'} aria-label={isMicrophoneEnabled ? 'Desativar microfone' : 'Ativar microfone'} onClick={() => void action(toggleMic)}>{isMicrophoneEnabled ? <Mic /> : <MicOff />}</button><button disabled={busy} title={isCameraEnabled ? 'Desativar câmera' : 'Ativar câmera'} aria-label={isCameraEnabled ? 'Desativar câmera' : 'Ativar câmera'} onClick={() => void action(() => localParticipant.setCameraEnabled(!isCameraEnabled))}>{isCameraEnabled ? <Camera /> : <CameraOff />}</button><button title={deafened ? 'Ouvir a sala' : 'Silenciar áudio recebido'} aria-label={deafened ? 'Ouvir a sala' : 'Silenciar áudio recebido'} onClick={() => setDeafened(!deafened)}>{deafened ? <VolumeX /> : <Volume2 />}</button></div>
       <button className={`share-control ${isScreenShareEnabled ? 'active' : ''}`} disabled={busy} onClick={() => void action(() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled, { audio: true, resolution: { width: 1920, height: 1080, frameRate: 30 }, contentHint: 'text' }))}><MonitorUp size={19} /><span>{isScreenShareEnabled ? 'Parar de compartilhar' : 'Compartilhar tela'}</span></button>
       <div><button title="Painel flutuante (controla a sala sobre a tela compartilhada)" aria-label="Abrir painel flutuante" onClick={() => void openPip()}><PictureInPicture2 /></button><button className={meRaised ? 'active' : ''} title={meRaised ? 'Abaixar mão' : 'Levantar mão'} aria-label={meRaised ? 'Abaixar mão' : 'Levantar mão'} onClick={() => void action(hand)}><Hand /></button><button className="hangup" title="Sair da sala" aria-label="Sair da sala" onClick={() => void room.disconnect()}><PhoneOff /></button></div>
     </div>

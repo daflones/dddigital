@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { ArrowDown, ArrowUp, Check, Copy, Link, Plus, Search, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, Copy, Link, Mic, Plus, Search, Trash2, UserRound } from 'lucide-react'
 import { toast } from 'sonner'
 import { db, errorMessage, rpc, avatarUrl, serverIconUrl } from '../lib/supabase'
 import type { Channel, Message, Profile, Role, RoleFlag, Server } from '../lib/types'
 import { Modal, ProfileCard, StyledName } from './ui'
 import { GifPanel } from './Pickers'
+import { VoiceSettings } from './VoiceSettings'
 
 export function CreateServer({ close, created }: { close: () => void; created: (id: string) => void }) {
   const [busy, setBusy] = useState(false)
@@ -168,6 +169,7 @@ async function uploadMedia(profileId: string, kind: 'avatar' | 'banner', file: F
   return path
 }
 export function ProfileSettings({ profile, close, updated }: { profile: Profile; close: () => void; updated: (profile: Profile) => void }) {
+  const [tab, setTab] = useState<'perfil' | 'voz'>('perfil')
   const [busy, setBusy] = useState(false)
   const [avatar, setAvatar] = useState<PendingMedia>({})
   const [banner, setBanner] = useState<PendingMedia>({})
@@ -206,6 +208,8 @@ export function ProfileSettings({ profile, close, updated }: { profile: Profile;
   }
   const previewCard = { ...preview, avatar_url: mediaPreview(avatar, preview.avatar_url), banner_url: mediaPreview(banner, preview.banner_url) }
   return <Modal title="Como a comunidade vê você." close={close}>
+    <div className="settings-tabs"><button className={tab === 'perfil' ? 'active' : ''} onClick={() => setTab('perfil')}><UserRound size={15} />Perfil</button><button className={tab === 'voz' ? 'active' : ''} onClick={() => setTab('voz')}><Mic size={15} />Voz e áudio</button></div>
+    {tab === 'voz' ? <VoiceSettings /> : <>
     <ProfileCard profile={previewCard} />
     <form onSubmit={submit} onChange={e => refresh(e.currentTarget)}>
       <div className="name-style-row">
@@ -234,6 +238,7 @@ export function ProfileSettings({ profile, close, updated }: { profile: Profile;
       </div>
       <button className="primary full" disabled={busy}>{busy ? 'Salvando…' : 'Salvar perfil'}</button>
     </form>
+    </>}
     {gifFor && <Modal title={gifFor === 'avatar' ? 'GIF para o avatar' : 'GIF para a capa'} close={() => setGifFor(null)}>
       <div className="gif-panel inline"><GifPanel onGif={url => { (gifFor === 'avatar' ? setAvatar : setBanner)({ external: url }); setGifFor(null) }} /></div>
     </Modal>}
