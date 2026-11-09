@@ -12,7 +12,19 @@ import { EmojiGifPicker } from './Pickers'
 const PAGE = 50
 const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf', 'text/plain',
   'audio/webm', 'audio/ogg', 'audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/wav']
-const messageSelect = '*,author:ddtal_profiles!author_id(*),reply:ddtal_messages!reply_to(id,content,attachment_name,author:ddtal_profiles!author_id(*))'
+const messageSelect = '*,author:ddtal_profiles!author_id(*)'
+const replySelect = 'id,content,attachment_name,author:ddtal_profiles!author_id(*)'
+
+// PostgREST resolves self-joins as to-many; fetch reply targets in a second
+// query instead. Missing parents render as "Mensagem removida".
+async function hydrateReplies(rows: Message[]) {
+  const ids = [...new Set(rows.map(m => m.reply_to).filter((id): id is string => Boolean(id)))]
+  if (!ids.length) return rows
+  const { data } = await db().from('ddtal_messages').select(replySelect).in('id', ids)
+  const byId = new Map(((data || []) as unknown as NonNullable<Message['reply']>[]).map(r => [r!.id, r]))
+  for (const m of rows) if (m.reply_to) m.reply = byId.get(m.reply_to) ?? { id: m.reply_to, content: '', author: null }
+  return rows
+}
 
 function Attachment({ message }: { message: Message }) {
   const [url, setUrl] = useState('')
@@ -36,7 +48,12 @@ function Attachment({ message }: { message: Message }) {
 }
 
 function ReplyQuote({ reply }: { reply: NonNullable<Message['reply']> }) {
-  return <div className="reply-quote"><CornerUpLeft size={12} /><strong>{reply.author?.display_name || 'Builder'}</strong><span>{reply.content || (reply.attachment_name ? `Arquivo: ${reply.attachment_name}` : 'Mensagem removida')}</span></div>
+  const name = reply.author?.display_name
+  return <div className={`reply-quote ${name ? '' : 'deleted'}`}>
+    {name && <Avatar name={name} url={reply.author?.avatar_url} size="tiny" />}
+    <strong>{name || 'Builder'}</strong>
+    <span>{reply.content || (reply.attachment_name ? `Arquivo: ${reply.attachment_name}` : 'Mensagem removida')}</span>
+  </div>
 }
 
 export function Chat({ channel, profile, demo, compact = false, canDeleteOthers = false }: {
@@ -75,9 +92,11 @@ export function Chat({ channel, profile, demo, compact = false, canDeleteOthers 
       if (error) setError(error.message)
       else {
         setError('')
+        const rows = await hydrateReplies(data as Message[])
+        if (!alive) return
         setMessages(current => {
           const byId = new Map(current.map(m => [m.id, m]))
-          for (const m of data as Message[]) byId.set(m.id, m)
+          for (const m of rows) byId.set(m.id, m)
           return [...byId.values()].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
         })
         setHasMore(data.length === PAGE)
@@ -105,7 +124,7 @@ export function Chat({ channel, profile, demo, compact = false, canDeleteOthers 
       .or(`created_at.lt.${first.created_at},and(created_at.eq.${first.created_at},id.lt.${first.id})`)
       .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(PAGE)
     if (error) toast.error(error.message)
-    else { nearBottom.current = false; setMessages(current => [...(data as Message[]).reverse(), ...current]); setHasMore(data.length === PAGE) }
+    else { nearBottom.current = false; const rows = await hydrateReplies(data as Message[]); setMessages(current => [...rows.reverse(), ...current]); setHasMore(rows.length === PAGE) }
     setLoading(false)
   }
   function chooseFile(next?: File) {
@@ -178,7 +197,7 @@ export function Chat({ channel, profile, demo, compact = false, canDeleteOthers 
       else {
         const { data, error } = await db().from('ddtal_messages').insert(payload).select(messageSelect).single()
         if (error) throw error
-        created = data as Message
+        created = { ...(data as Message), reply: replying ? { id: replying.id, content: replying.content, attachment_name: replying.attachment_name, author: replying.author } : null }
       }
       if (mounted.current) {
         nearBottom.current = true

@@ -248,3 +248,12 @@
 .server-preview{display:flex;align-items:center;gap:12px;padding:12px;margin-bottom:12px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
 .server-preview strong{font-size:16px}
 .server-preview p{margin:2px 0 0;font-size:12px}
+
+/* reply quote: Discord-style elbow connector */
+.reply-quote{position:relative;display:flex;align-items:center;gap:6px;font-size:11.5px;color:#8f85a8;padding:2px 0 2px 24px;margin:-2px 0 4px;border:none;background:none;border-radius:0}
+.reply-quote::before{content:'';position:absolute;left:3px;top:-6px;bottom:50%;width:13px;border-left:2px solid #4a4258;border-top:2px solid #4a4258;border-top-left-radius:9px}
+.reply-quote .avatar{width:15px!important;height:15px!important;min-width:15px;font-size:8px;flex-shrink:0}
+.reply-quote strong{color:#c9b8f5;flex-shrink:0}
+.reply-quote span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.reply-quote.deleted{opacity:.55;font-style:italic}
+.reply-quote svg{display:none}
