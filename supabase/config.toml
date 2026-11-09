@@ -1,0 +1,4 @@
+project_id = "discodigital"
+
+[functions.ddtal-livekit-token]
+verify_jwt = false
