@@ -2,11 +2,13 @@ export type NameEffect = 'none' | 'glow' | 'pulse' | 'rainbow' | 'wave'
 export type NameFont = 'default' | 'mono' | 'pixel' | 'script'
 export type AvatarFrame = 'none' | 'ring' | 'glow' | 'rainbow' | 'cyber' | 'dashed' | 'gold'
 export type CardEffect = 'none' | 'scanlines' | 'grid' | 'aurora' | 'matrix' | 'vapor'
+export type Presence = 'online' | 'busy' | 'away' | 'offline'
 export type Profile = {
   id: string; display_name: string; handle: string; avatar_url?: string | null
   name_color?: string | null; name_effect?: NameEffect; name_font?: NameFont
   status_text?: string; bio?: string; banner_url?: string | null
   avatar_frame?: AvatarFrame; card_effect?: CardEffect; card_color?: string | null
+  presence?: Presence
 }
 export type Server = {
   id: string; name: string; description: string; owner_id: string

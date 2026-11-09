@@ -181,6 +181,12 @@ select pg_temp.ddtal_assert(not public.ddtal_can_access_channel(current_setting(
 select set_config('ddtal.test.dm2',public.ddtal_open_dm('dd000000-0000-4000-8000-000000000001')::text,true);
 select pg_temp.ddtal_assert(public.ddtal_can_access_channel(current_setting('ddtal.test.dm2')::uuid),'same-server member opens DM without friendship');
 select pg_temp.ddtal_assert(public.ddtal_storage_channel('malformed/path') is null,'malformed storage path safely rejected');
+-- Presence: member updates own status; cannot update someone else's.
+select set_config('request.jwt.claims','{"sub":"dd000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
+update public.ddtal_profiles set presence='busy' where id=auth.uid();
+select pg_temp.ddtal_assert((select presence='busy' from public.ddtal_profiles where id=auth.uid()),'member updates own presence');
+update public.ddtal_profiles set presence='offline' where id='dd000000-0000-4000-8000-000000000001';
+select pg_temp.ddtal_assert((select presence<>'offline' from public.ddtal_profiles where id='dd000000-0000-4000-8000-000000000001'),'member cannot change another presence');
 reset role;
 select 'PASS: membership, invites, role restrictions, author spoofing, attachment scope, private DMs and RLS' as result;
 rollback;

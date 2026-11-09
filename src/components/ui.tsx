@@ -5,12 +5,12 @@ import { toast } from 'sonner'
 import { avatarUrl, db, errorMessage, rpc } from '../lib/supabase'
 import type { Friendship, Profile } from '../lib/types'
 
-export function Avatar({ name, size = '', online = false, url, frame }: { name: string; size?: string; online?: boolean; url?: string | null; frame?: Profile['avatar_frame'] }) {
+export function Avatar({ name, size = '', online = false, presence, url, frame }: { name: string; size?: string; online?: boolean; presence?: Profile['presence']; url?: string | null; frame?: Profile['avatar_frame'] }) {
   const hue = [...name].reduce((n, c) => n + c.charCodeAt(0), 0) % 360
   const src = url && url.startsWith('http') ? url : avatarUrl(url)
   return <span className={`avatar ${size} ${src ? 'has-image' : ''} frame-${frame || 'none'}`} style={{ background: `hsl(${hue} 24% 24%)`, color: `hsl(${hue} 65% 83%)` }}>
     {src ? <img src={src} alt="" loading="lazy" /> : name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()}
-    {online && <i className="online-dot" />}
+    {presence ? <i className={`presence-dot p-${presence}`} /> : online && <i className="online-dot" />}
   </span>
 }
 

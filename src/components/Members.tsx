@@ -3,7 +3,7 @@ import { BadgeCheck, Check, MoreVertical, PenLine, ShieldCheck, ShieldPlus, User
 import { toast } from 'sonner'
 import { errorMessage, rpc } from '../lib/supabase'
 import { Avatar, PeerActions, ProfileCard, StyledName } from './ui'
-import type { Channel, Membership, MemberRole, Profile, Role, RoleFlag } from '../lib/types'
+import type { Channel, Membership, MemberRole, Presence, Profile, Role, RoleFlag } from '../lib/types'
 
 type ModerateAction = 'mute_mic' | 'unmute_mic' | 'kick' | 'move'
 export type MemberVoice = {
@@ -15,11 +15,11 @@ export type MemberVoice = {
 
 // Members sidebar: every row opens a management card — nickname, roles,
 // voice moderation and server removal, each gated by the viewer's permissions.
-export function MembersPanel({ channel, members, roles, memberRoles, can, profile, demo, openRoles, openProfile, changed, voice, openDM }: {
+export function MembersPanel({ channel, members, roles, memberRoles, can, profile, demo, openRoles, openProfile, changed, voice, openDM, presenceOf }: {
   channel: Channel; members: Membership[]; roles: Role[]; memberRoles: MemberRole[]
   can: (flag: RoleFlag) => boolean; profile: Profile; demo: boolean
   openRoles: () => void; openProfile: () => void; changed: () => void; voice?: MemberVoice
-  openDM?: (peer: Profile) => void
+  openDM?: (peer: Profile) => void; presenceOf?: (peer?: Profile | null) => Presence
 }) {
   const [menuFor, setMenuFor] = useState<string | null>(null)
   const [nickDraft, setNickDraft] = useState('')
@@ -100,7 +100,7 @@ export function MembersPanel({ channel, members, roles, memberRoles, can, profil
         const inRoom = Boolean(voice?.channelId && voice.inRoom(m.user_id))
         const actionable = isSelf || canManageRoles || canNickname || (canKick && !isOwner) || (canVoice && inRoom && !isSelf)
         return <div className={`member-row ${actionable ? 'actionable' : ''}`} key={m.user_id} onClick={() => actionable && openMenu(m)}>
-          <Avatar name={m.profile.display_name} url={m.profile.avatar_url} size="small" frame={m.profile.avatar_frame} />
+          <Avatar name={m.profile.display_name} url={m.profile.avatar_url} size="small" frame={m.profile.avatar_frame} presence={presenceOf?.(m.profile)} />
           <div>
             <strong>{m.nickname ? <span>{m.nickname}</span> : <StyledName profile={m.profile} />}{isSelf && ' (você)'}</strong>
             <span>{isOwner ? 'Criador · professor' : m.role === 'moderator' ? 'Equipe' : `${m.nickname ? m.profile.display_name + ' · ' : ''}@${m.profile.handle}`}</span>
