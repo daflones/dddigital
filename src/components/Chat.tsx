@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { db, errorMessage } from '../lib/supabase'
 import type { Channel, Message, Profile } from '../lib/types'
 import { demoMessages } from '../lib/demo'
-import { Avatar, StyledName } from './ui'
+import { Avatar, Modal, ProfileCard, StyledName } from './ui'
 import { EmojiGifPicker } from './Pickers'
 
 const PAGE = 50
@@ -54,6 +54,7 @@ export function Chat({ channel, profile, demo, compact = false, canDeleteOthers 
   const [editing, setEditing] = useState<Message | null>(null)
   const [editDraft, setEditDraft] = useState('')
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [viewing, setViewing] = useState<Profile | null>(null)
   const [recording, setRecording] = useState(false)
   const cancelled = useRef(false)
   const recorder = useRef<MediaRecorder | null>(null)
@@ -222,9 +223,9 @@ export function Chat({ channel, profile, demo, compact = false, canDeleteOthers 
         const previous = messages[index - 1]
         const grouped = previous?.author_id === message.author_id && !previous.reply_to && !message.reply_to && new Date(message.created_at).getTime() - new Date(previous.created_at).getTime() < 300000
         return <article className={`message ${grouped ? 'grouped' : ''}`} key={message.id}>
-          {!grouped && <Avatar name={message.author?.display_name || 'Builder'} url={message.author?.avatar_url} size="small" />}
+          {!grouped && <button className="author-click" aria-label={`Ver perfil de ${message.author?.display_name || 'Builder'}`} onClick={() => message.author && setViewing(message.author)}><Avatar name={message.author?.display_name || 'Builder'} url={message.author?.avatar_url} size="small" frame={message.author?.avatar_frame} /></button>}
           <div className="message-body">
-            {!grouped && <div className="message-meta"><strong>{message.author ? <StyledName profile={message.author} /> : 'Builder'}</strong>{message.author_id === profile.id && <span className="you-tag">você</span>}<time title={new Date(message.created_at).toLocaleString('pt-BR')}>{new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time></div>}
+            {!grouped && <div className="message-meta"><button className="author-click name" onClick={() => message.author && setViewing(message.author)}><strong>{message.author ? <StyledName profile={message.author} /> : 'Builder'}</strong></button>{message.author_id === profile.id && <span className="you-tag">você</span>}<time title={new Date(message.created_at).toLocaleString('pt-BR')}>{new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time></div>}
             {message.reply && <ReplyQuote reply={message.reply} />}
             {editing?.id === message.id ? <div className="edit-box">
               <textarea value={editDraft} maxLength={6000} autoFocus rows={2} onChange={e => setEditDraft(e.target.value)}
@@ -268,6 +269,7 @@ export function Chat({ channel, profile, demo, compact = false, canDeleteOthers 
       <input ref={input} type="file" hidden accept={allowedTypes.join(',')} onChange={e => { chooseFile(e.target.files?.[0]); e.target.value = '' }} />
       <span className="composer-hint">{demo ? 'Prévia interativa · mensagens não são publicadas' : 'Enter envia · Esc limpa · 🎙 grava áudio'}</span>
       {picker && <EmojiGifPicker onEmoji={u => { setContent(v => v + u); textArea.current?.focus() }} onGif={sendGif} close={() => setPicker(false)} />}
+      {viewing && <Modal title="Perfil" close={() => setViewing(null)}><ProfileCard profile={viewing} /></Modal>}
     </form>
   </section>
 }

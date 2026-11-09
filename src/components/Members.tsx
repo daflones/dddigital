@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { BadgeCheck, Check, MoreVertical, PenLine, ShieldCheck, ShieldPlus, UserCog, UserMinus, Volume1, Volume2, VolumeX } from 'lucide-react'
 import { toast } from 'sonner'
 import { errorMessage, rpc } from '../lib/supabase'
-import { Avatar, StyledName } from './ui'
+import { Avatar, ProfileCard, StyledName } from './ui'
 import type { Channel, Membership, MemberRole, Profile, Role, RoleFlag } from '../lib/types'
 
 type ModerateAction = 'mute_mic' | 'unmute_mic' | 'kick' | 'move'
@@ -99,7 +99,7 @@ export function MembersPanel({ channel, members, roles, memberRoles, can, profil
         const inRoom = Boolean(voice?.channelId && voice.inRoom(m.user_id))
         const actionable = isSelf || canManageRoles || canNickname || (canKick && !isOwner) || (canVoice && inRoom && !isSelf)
         return <div className={`member-row ${actionable ? 'actionable' : ''}`} key={m.user_id} onClick={() => actionable && openMenu(m)}>
-          <Avatar name={m.profile.display_name} url={m.profile.avatar_url} size="small" />
+          <Avatar name={m.profile.display_name} url={m.profile.avatar_url} size="small" frame={m.profile.avatar_frame} />
           <div>
             <strong>{m.nickname ? <span>{m.nickname}</span> : <StyledName profile={m.profile} />}{isSelf && ' (você)'}</strong>
             <span>{isOwner ? 'Criador · professor' : m.role === 'moderator' ? 'Equipe' : `${m.nickname ? m.profile.display_name + ' · ' : ''}@${m.profile.handle}`}</span>
@@ -108,7 +108,10 @@ export function MembersPanel({ channel, members, roles, memberRoles, can, profil
           {isOwner && <ShieldCheck size={15} className="owner-icon" />}
           {actionable && <button className="icon-button member-menu-button" aria-label={`Ações de ${m.profile.display_name}`} onClick={e => { e.stopPropagation(); openMenu(m) }}><MoreVertical size={16} /></button>}
           {menuFor === m.user_id && <div className="member-menu member-card" ref={menuRef} onClick={e => e.stopPropagation()}>
-            <div className="member-card-head"><Avatar name={m.profile.display_name} url={m.profile.avatar_url} size="small" /><div><strong>{m.nickname || m.profile.display_name}</strong><span>@{m.profile.handle}{isOwner ? ' · Criador' : m.role === 'moderator' ? ' · Moderador' : ''}</span></div></div>
+            <ProfileCard profile={m.profile}>
+              {m.nickname && <span className="pc-note">a.k.a. {m.nickname}</span>}
+              {(isOwner || m.role === 'moderator' || badges.length > 0) && <div className="role-badges">{isOwner && <i className="role-badge pc-role"><ShieldCheck size={11} />Criador</i>}{m.role === 'moderator' && <i className="role-badge pc-role"><ShieldCheck size={11} />Moderador</i>}{badges.map(r => <i key={r.id} className="role-badge" style={{ color: r.color, borderColor: r.color }}><BadgeCheck size={11} />{r.name}</i>)}</div>}
+            </ProfileCard>
             {isSelf && <button onClick={() => { setMenuFor(null); openProfile() }}><UserCog size={15} />Editar meu perfil</button>}
             {(isSelf || canNickname) && <div className="nickname-editor">
               <span className="menu-label"><PenLine size={11} /> Apelido no servidor</span>

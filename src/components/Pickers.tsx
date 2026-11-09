@@ -35,7 +35,7 @@ export function EmojiGifPicker({ onEmoji, onGif, close }: { onEmoji: (unicode: s
   </div>
 }
 
-function GifPanel({ onGif }: { onGif: (url: string) => void }) {
+export function GifPanel({ onGif }: { onGif: (url: string) => void }) {
   const [term, setTerm] = useState('')
   const [gifs, setGifs] = useState<Gif[]>([])
   const [busy, setBusy] = useState(false)

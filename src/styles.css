@@ -187,3 +187,48 @@
 .gif-grid>button{padding:0;border:none;border-radius:8px;overflow:hidden;cursor:pointer;background:rgba(255,255,255,.04);transition:transform .12s}
 .gif-grid>button:hover{transform:scale(1.04)}
 .gif-grid img{width:100%;height:86px;object-fit:cover;display:block}
+
+/* ---- Profile card: banner, avatar frames, card effects, status/bio ---- */
+.author-click{padding:0;border:none;background:none;cursor:pointer;display:flex;align-items:center;color:inherit;font:inherit;text-align:left}
+.author-click.name strong:hover{text-decoration:underline}
+.profile-card{--card-accent:#b69afb;border-radius:14px;overflow:hidden;border:1px solid rgba(255,255,255,.12);background:#14101c;margin-bottom:10px;position:relative}
+.pc-banner{height:92px;position:relative;overflow:hidden;background:linear-gradient(120deg,var(--card-accent),#17131f 75%)}
+.pc-banner img{width:100%;height:100%;object-fit:cover;display:block}
+.pc-banner-fill{position:absolute;inset:0;background:linear-gradient(120deg,var(--card-accent),transparent 80%)}
+.pc-body{padding:0 14px 14px;position:relative}
+.pc-body>.avatar.pc{position:absolute;top:-34px;left:14px;width:72px;height:72px;border-radius:50%;border:4px solid #14101c;font-size:24px;z-index:2}
+.pc-identity{padding-top:44px;display:flex;flex-direction:column;gap:1px}
+.pc-name{font-size:17px}
+.pc-handle{font-size:12px;color:#8f85a8}
+.pc-status{display:flex;align-items:center;gap:7px;margin-top:10px;padding:7px 10px;font-size:12.5px;color:#d8d0ea;background:rgba(255,255,255,.05);border-radius:9px;border:1px solid rgba(255,255,255,.07)}
+.pc-status>i{width:8px;height:8px;border-radius:50%;background:var(--card-accent);flex-shrink:0;box-shadow:0 0 8px var(--card-accent)}
+.pc-note{margin-top:8px;font-size:11.5px;color:#8f85a8;font-style:italic}
+.pc-bio{margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08)}
+.pc-section{display:block;font-size:9.5px;font-weight:800;letter-spacing:.09em;color:#8f85a8;margin-bottom:5px}
+.pc-bio p{margin:0;font-size:12.5px;color:#cfc6e0;line-height:1.55;white-space:pre-wrap}
+.pc-actions{margin-top:10px}
+.gif-panel.inline{height:320px;padding:0}
+
+/* avatar frames — accent inherits the card/name accent */
+.avatar{--frame-accent:var(--card-accent,#b69afb)}
+.avatar.frame-ring{box-shadow:0 0 0 2px var(--frame-accent)}
+.avatar.frame-glow{box-shadow:0 0 0 2px var(--frame-accent),0 0 14px var(--frame-accent)}
+.avatar.frame-dashed{box-shadow:0 0 0 2px var(--frame-accent);outline:2px dashed var(--frame-accent);outline-offset:3px}
+.avatar.frame-gold{box-shadow:0 0 0 2px #f0c04a,0 0 12px rgba(240,192,74,.55)}
+.avatar.frame-rainbow{border:2px solid transparent;background:linear-gradient(#1c1826,#1c1826) padding-box,conic-gradient(#ff5a5a,#ffb84d,#7ce38b,#4dc3ff,#b69afb,#ff5a5a) border-box;animation:ddtal-frame-spin 4s linear infinite}
+@keyframes ddtal-frame-spin{to{filter:hue-rotate(360deg)}}
+.avatar.frame-cyber{outline:2px solid var(--frame-accent);outline-offset:-2px;border-radius:6px!important;position:relative;clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px))}
+.avatar.frame-cyber img{border-radius:0}
+
+/* card theme overlays */
+.fx-card-scanlines::after{content:'';position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0 1px,transparent 1px 3px)}
+.fx-card-grid::after{content:'';position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgba(182,154,251,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(182,154,251,.09) 1px,transparent 1px);background-size:22px 22px}
+.fx-card-aurora .pc-banner-fill{background:linear-gradient(120deg,var(--card-accent),#4dc3ff 45%,#ff7ad9 90%);filter:saturate(1.2);animation:ddtal-aurora 8s ease-in-out infinite alternate}
+@keyframes ddtal-aurora{from{filter:hue-rotate(0deg) saturate(1.2)}to{filter:hue-rotate(70deg) saturate(1.4)}}
+.fx-card-aurora{background:linear-gradient(160deg,#14101c 55%,color-mix(in srgb,var(--card-accent) 18%,#14101c))}
+.fx-card-matrix{background:#0a130c}
+.fx-card-matrix::after{content:'';position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgba(80,255,140,.06) 1px,transparent 1px);background-size:100% 9px;box-shadow:inset 0 0 60px rgba(60,255,120,.07)}
+.fx-card-vapor{background:linear-gradient(160deg,#1a1024,#14101c 60%)}
+.fx-card-vapor .pc-banner-fill{background:linear-gradient(115deg,#ff7ad9,#7c5cff 50%,#4dc3ff)}
+.fx-card-vapor::after{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 80% 0%,rgba(255,122,217,.14),transparent 45%)}
+.member-card .profile-card{margin-bottom:8px}

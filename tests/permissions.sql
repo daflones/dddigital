@@ -55,6 +55,18 @@ end $$;
 delete from public.ddtal_messages where content='Edited by me';
 select pg_temp.ddtal_assert((select count(*)=0 from public.ddtal_messages where content='Edited by me'),'member deletes own message');
 
+-- Profile card: members customize their own card only.
+update public.ddtal_profiles set status_text='em aula',bio='builder em formação',avatar_frame='cyber',card_effect='matrix',banner_url='https://media.giphy.com/x.gif' where id=auth.uid();
+select pg_temp.ddtal_assert((select status_text='em aula' and avatar_frame='cyber' and card_effect='matrix' from public.ddtal_profiles where id=auth.uid()),'member customizes own profile card');
+update public.ddtal_profiles set bio='hack' where id='dd000000-0000-4000-8000-000000000001';
+select pg_temp.ddtal_assert((select bio='' from public.ddtal_profiles where id='dd000000-0000-4000-8000-000000000001'),'member cannot edit foreign profile card');
+do $$ begin
+  begin
+    update public.ddtal_profiles set banner_url='javascript:alert(1)' where id=auth.uid();
+    raise exception 'ASSERTION FAILED: unsafe banner url accepted';
+  exception when check_violation then null; end;
+end $$;
+
 do $$ begin
   begin
     insert into public.ddtal_messages(channel_id,author_id,content) values(current_setting('ddtal.test.channel')::uuid,'dd000000-0000-4000-8000-000000000001','Spoof');

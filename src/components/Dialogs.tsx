@@ -3,7 +3,8 @@ import { ArrowDown, ArrowUp, Check, Copy, Link, Plus, Search, Trash2 } from 'luc
 import { toast } from 'sonner'
 import { db, errorMessage, rpc, avatarUrl } from '../lib/supabase'
 import type { Channel, Message, Profile, Role, RoleFlag } from '../lib/types'
-import { Avatar, Modal, StyledName } from './ui'
+import { Modal, ProfileCard } from './ui'
+import { GifPanel } from './Pickers'
 
 export function CreateServer({ close, created }: { close: () => void; created: (id: string) => void }) {
   const [busy, setBusy] = useState(false)
@@ -49,36 +50,73 @@ const NAME_FONTS: { value: NonNullable<Profile['name_font']>; label: string }[] 
   { value: 'default', label: 'Padrão' }, { value: 'mono', label: 'Terminal' },
   { value: 'pixel', label: 'Pixel' }, { value: 'script', label: 'Escrita à mão' },
 ]
-async function makeAvatarBlob(file: File): Promise<Blob> {
+const AVATAR_FRAMES: { value: NonNullable<Profile['avatar_frame']>; label: string }[] = [
+  { value: 'none', label: 'Nenhuma' }, { value: 'ring', label: 'Anel' }, { value: 'glow', label: 'Brilho' },
+  { value: 'rainbow', label: 'Arco-íris' }, { value: 'cyber', label: 'Cyber' }, { value: 'dashed', label: 'Tracejado' }, { value: 'gold', label: 'Ouro' },
+]
+const CARD_EFFECTS: { value: NonNullable<Profile['card_effect']>; label: string }[] = [
+  { value: 'none', label: 'Nenhum' }, { value: 'scanlines', label: 'Scanlines' }, { value: 'grid', label: 'Grade' },
+  { value: 'aurora', label: 'Aurora' }, { value: 'matrix', label: 'Matrix' }, { value: 'vapor', label: 'Vaporwave' },
+]
+type PendingMedia = { file?: File; external?: string; removed?: boolean }
+function mediaPreview(pending: PendingMedia, stored: string | null | undefined): string | null {
+  if (pending.file) return URL.createObjectURL(pending.file)
+  if (pending.external) return pending.external
+  if (pending.removed) return null
+  return stored ? (stored.startsWith('http') ? stored : avatarUrl(stored)) : null
+}
+// Uploads a picked file as-is when animated (GIF); other images are cropped/resized.
+async function uploadMedia(profileId: string, kind: 'avatar' | 'banner', file: File): Promise<string> {
+  if (file.type === 'image/gif') {
+    const path = `${profileId}/${kind}.gif`
+    const { error } = await db().storage.from('ddtal-avatars').upload(path, file, { upsert: true, contentType: 'image/gif' })
+    if (error) throw error
+    return path
+  }
   const bitmap = await createImageBitmap(file)
-  const size = 256
   const canvas = document.createElement('canvas')
-  canvas.width = canvas.height = size
+  const w = kind === 'avatar' ? 256 : Math.min(960, bitmap.width)
+  const h = kind === 'avatar' ? 256 : Math.round(w * bitmap.height / bitmap.width)
+  canvas.width = w; canvas.height = h
   const ctx = canvas.getContext('2d')!
-  const side = Math.min(bitmap.width, bitmap.height)
-  ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size)
-  return new Promise((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error('Não consegui processar a imagem.')), 'image/webp', 0.9))
+  if (kind === 'avatar') {
+    const side = Math.min(bitmap.width, bitmap.height)
+    ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, w, h)
+  } else ctx.drawImage(bitmap, 0, 0, w, h)
+  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error('Não consegui processar a imagem.')), 'image/webp', 0.88))
+  const path = `${profileId}/${kind}.webp`
+  const { error } = await db().storage.from('ddtal-avatars').upload(path, blob, { upsert: true, contentType: 'image/webp' })
+  if (error) throw error
+  return path
 }
 export function ProfileSettings({ profile, close, updated }: { profile: Profile; close: () => void; updated: (profile: Profile) => void }) {
   const [busy, setBusy] = useState(false)
-  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatar, setAvatar] = useState<PendingMedia>({})
+  const [banner, setBanner] = useState<PendingMedia>({})
+  const [gifFor, setGifFor] = useState<'avatar' | 'banner' | null>(null)
   const [preview, setPreview] = useState<Profile>({ ...profile })
-  const draftAvatar = avatarFile ? URL.createObjectURL(avatarFile) : avatarUrl(preview.avatar_url)
+  function pickFile(kind: 'avatar' | 'banner', file?: File) {
+    if (!file) return
+    if (!file.type.startsWith('image/')) return toast.error('Escolha uma imagem ou GIF.')
+    if (file.size > 8 * 1024 * 1024) { toast.error('O limite é 8 MB.'); return }
+    if (kind === 'avatar') setAvatar({ file }); else setBanner({ file })
+  }
   async function submit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault(); const form = e.currentTarget; const values = new FormData(form); setBusy(true)
+    e.preventDefault(); const values = new FormData(e.currentTarget); setBusy(true)
     try {
-      let avatar_url: string | null | undefined = preview.avatar_url
-      if (avatarFile) {
-        const blob = await makeAvatarBlob(avatarFile)
-        avatar_url = `${profile.id}/avatar.webp`
-        const { error: uploadError } = await db().storage.from('ddtal-avatars').upload(avatar_url, blob, { upsert: true, contentType: 'image/webp' })
-        if (uploadError) throw uploadError
-      }
-      if (values.get('remove_avatar') === 'on') avatar_url = null
+      const resolve = async (pending: PendingMedia, kind: 'avatar' | 'banner', stored?: string | null) =>
+        pending.file ? uploadMedia(profile.id, kind, pending.file)
+          : pending.external ? pending.external
+          : pending.removed ? null : stored
       const { data, error } = await db().from('ddtal_profiles').update({
         display_name: values.get('name'), handle: String(values.get('handle')).toLowerCase(),
-        avatar_url, name_color: values.get('use_color') === 'on' ? values.get('color') : null,
+        status_text: values.get('status'), bio: values.get('bio'),
+        avatar_url: await resolve(avatar, 'avatar', preview.avatar_url),
+        banner_url: await resolve(banner, 'banner', preview.banner_url),
+        name_color: values.get('use_color') === 'on' ? values.get('color') : null,
         name_effect: values.get('effect'), name_font: values.get('font'),
+        avatar_frame: values.get('frame'), card_effect: values.get('card_effect'),
+        card_color: values.get('use_card_color') === 'on' ? values.get('card_color') : null,
       }).eq('id', profile.id).select().single()
       if (error) throw error
       updated(data as Profile); toast.success('Perfil atualizado.'); close()
@@ -86,25 +124,42 @@ export function ProfileSettings({ profile, close, updated }: { profile: Profile;
   }
   const refresh = (form: HTMLFormElement) => {
     const v = new FormData(form)
-    setPreview({ ...preview, display_name: String(v.get('name')) || 'Builder', name_color: v.get('use_color') === 'on' ? String(v.get('color')) : null, name_effect: v.get('effect') as Profile['name_effect'], name_font: v.get('font') as Profile['name_font'] })
+    setPreview({ ...preview, display_name: String(v.get('name')) || 'Builder', status_text: String(v.get('status') || ''), bio: String(v.get('bio') || ''), name_color: v.get('use_color') === 'on' ? String(v.get('color')) : null, name_effect: v.get('effect') as Profile['name_effect'], name_font: v.get('font') as Profile['name_font'], avatar_frame: v.get('frame') as Profile['avatar_frame'], card_effect: v.get('card_effect') as Profile['card_effect'], card_color: v.get('use_card_color') === 'on' ? String(v.get('card_color')) : null })
   }
+  const previewCard = { ...preview, avatar_url: mediaPreview(avatar, preview.avatar_url), banner_url: mediaPreview(banner, preview.banner_url) }
   return <Modal title="Como a comunidade vê você." close={close}>
-    <div className="profile-preview"><Avatar name={preview.display_name} url={draftAvatar} /><div><StyledName profile={preview} className="preview-name" /><span>@{preview.handle}</span></div></div>
+    <ProfileCard profile={previewCard} />
     <form onSubmit={submit} onChange={e => refresh(e.currentTarget)}>
-      <div className="avatar-upload"><label className="secondary">Escolher imagem<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={e => { const f = e.target.files?.[0]; if (f) { if (f.size > 5 * 1024 * 1024) { toast.error('Imagem acima de 5 MB.'); return } setAvatarFile(f) } }} /></label>
-        {preview.avatar_url && <label className="check-inline"><input type="checkbox" name="remove_avatar" /> Remover avatar</label>}
-        <span className="muted">Recortamos e centralizamos em 256×256.</span></div>
+      <div className="name-style-row">
+        <label className="grow">Avatar<div className="avatar-upload"><label className="secondary">Imagem/GIF<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={e => { pickFile('avatar', e.target.files?.[0]); e.target.value = '' }} /></label>
+          <button type="button" className="secondary" onClick={() => setGifFor('avatar')}><Search size={14} />Buscar GIF</button>
+          {previewCard.avatar_url && <button type="button" className="secondary danger-text" onClick={() => setAvatar({ removed: true })}>Remover</button>}</div></label>
+        <label className="grow">Capa do perfil<div className="avatar-upload"><label className="secondary">Imagem/GIF<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={e => { pickFile('banner', e.target.files?.[0]); e.target.value = '' }} /></label>
+          <button type="button" className="secondary" onClick={() => setGifFor('banner')}><Search size={14} />Buscar GIF</button>
+          {previewCard.banner_url && <button type="button" className="secondary danger-text" onClick={() => setBanner({ removed: true })}>Remover</button>}</div></label>
+      </div>
       <label>Nome de exibição<input name="name" defaultValue={profile.display_name} required minLength={2} maxLength={60} /></label>
       <label>Seu identificador<input name="handle" defaultValue={profile.handle} required minLength={3} maxLength={32} pattern="[a-z0-9_]{3,32}" /></label>
-      <p className="muted">Use letras minúsculas, números e _. Seus amigos encontram você por esse identificador.</p>
+      <label>Status<input name="status" defaultValue={profile.status_text} maxLength={120} placeholder="Ex.: Não confio em pessoas. Confio em padrões." /></label>
+      <label>Sobre mim<textarea name="bio" defaultValue={profile.bio} maxLength={500} rows={3} placeholder="Anote o que quiser compartilhar com a turma…" /></label>
       <div className="name-style-row">
         <label className="check-inline"><input type="checkbox" name="use_color" defaultChecked={Boolean(profile.name_color)} />Cor</label>
         <input name="color" type="color" defaultValue={profile.name_color || '#b69afb'} aria-label="Cor do nome" />
         <label className="grow">Efeito<select name="effect" defaultValue={profile.name_effect || 'none'}>{NAME_EFFECTS.map(fx => <option key={fx.value} value={fx.value}>{fx.label}</option>)}</select></label>
         <label className="grow">Fonte<select name="font" defaultValue={profile.name_font || 'default'}>{NAME_FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></label>
       </div>
+      <div className="name-style-row">
+        <label className="grow">Moldura do avatar<select name="frame" defaultValue={profile.avatar_frame || 'none'}>{AVATAR_FRAMES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></label>
+        <label className="grow">Efeito do cartão<select name="card_effect" defaultValue={profile.card_effect || 'none'}>{CARD_EFFECTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></label>
+        <label className="check-inline"><input type="checkbox" name="use_card_color" defaultChecked={Boolean(profile.card_color)} />Cor</label>
+        <input name="card_color" type="color" defaultValue={profile.card_color || '#7c5cff'} aria-label="Cor do cartão" />
+      </div>
       <button className="primary full" disabled={busy}>{busy ? 'Salvando…' : 'Salvar perfil'}</button>
-    </form></Modal>
+    </form>
+    {gifFor && <Modal title={gifFor === 'avatar' ? 'GIF para o avatar' : 'GIF para a capa'} close={() => setGifFor(null)}>
+      <div className="gif-panel inline"><GifPanel onGif={url => { (gifFor === 'avatar' ? setAvatar : setBanner)({ external: url }); setGifFor(null) }} /></div>
+    </Modal>}
+  </Modal>
 }
 const ROLE_FLAGS: { flag: RoleFlag; label: string; hint: string }[] = [
   { flag: 'moderate_voice', label: 'Moderar voz', hint: 'Silenciar, expulsar e mover pessoas nas salas' },

@@ -4,13 +4,34 @@ import { X } from 'lucide-react'
 import { avatarUrl } from '../lib/supabase'
 import type { Profile } from '../lib/types'
 
-export function Avatar({ name, size = '', online = false, url }: { name: string; size?: string; online?: boolean; url?: string | null }) {
+export function Avatar({ name, size = '', online = false, url, frame }: { name: string; size?: string; online?: boolean; url?: string | null; frame?: Profile['avatar_frame'] }) {
   const hue = [...name].reduce((n, c) => n + c.charCodeAt(0), 0) % 360
   const src = url && url.startsWith('http') ? url : avatarUrl(url)
-  return <span className={`avatar ${size} ${src ? 'has-image' : ''}`} style={{ background: `hsl(${hue} 24% 24%)`, color: `hsl(${hue} 65% 83%)` }}>
+  return <span className={`avatar ${size} ${src ? 'has-image' : ''} frame-${frame || 'none'}`} style={{ background: `hsl(${hue} 24% 24%)`, color: `hsl(${hue} 65% 83%)` }}>
     {src ? <img src={src} alt="" loading="lazy" /> : name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()}
     {online && <i className="online-dot" />}
   </span>
+}
+
+// Discord-style profile card: banner, framed avatar, styled name, status and bio.
+// `actions` renders moderation/action buttons below the identity block.
+export function ProfileCard({ profile, actions, children }: { profile: Profile; actions?: ReactNode; children?: ReactNode }) {
+  const accent = profile.card_color || profile.name_color || '#b69afb'
+  const banner = profile.banner_url && (profile.banner_url.startsWith('http') ? profile.banner_url : avatarUrl(profile.banner_url))
+  return <div className={`profile-card fx-card-${profile.card_effect || 'none'}`} style={{ '--card-accent': accent } as React.CSSProperties}>
+    <div className="pc-banner">{banner ? <img src={banner} alt="" /> : <i className="pc-banner-fill" />}</div>
+    <div className="pc-body">
+      <Avatar name={profile.display_name} url={profile.avatar_url} size="pc" frame={profile.avatar_frame} />
+      <div className="pc-identity">
+        <strong className="pc-name"><StyledName profile={profile} /></strong>
+        <span className="pc-handle">@{profile.handle}</span>
+      </div>
+      {profile.status_text && <span className="pc-status"><i />{profile.status_text}</span>}
+      {profile.bio && <div className="pc-bio"><span className="pc-section">SOBRE MIM</span><p>{profile.bio}</p></div>}
+      {children}
+      {actions && <div className="pc-actions">{actions}</div>}
+    </div>
+  </div>
 }
 
 // Renders a display name with the owner's color, font and effect choices.
