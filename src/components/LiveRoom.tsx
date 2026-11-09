@@ -1,26 +1,39 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { LiveKitRoom, RoomAudioRenderer, VideoTrack, useConnectionState, useLocalParticipant, useParticipants, useRoomContext, useTracks } from '@livekit/components-react'
 import type { TrackReference } from '@livekit/components-react'
 import { ConnectionState, RoomEvent, ScreenSharePresets, Track } from 'livekit-client'
 import type { RemoteParticipant } from 'livekit-client'
-import { Camera, CameraOff, Hand, Maximize2, Mic, MicOff, MonitorUp, MousePointer2, Pencil, PhoneOff, Trash2, Volume2, VolumeX } from 'lucide-react'
+import { BadgeCheck, Camera, CameraOff, Hand, Maximize2, Mic, MicOff, MonitorUp, MousePointer2, Pencil, PhoneOff, PictureInPicture2, Trash2, UserMinus, Volume2, VolumeX, Volume1 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Avatar } from './ui'
-import type { RoomCredentials } from '../lib/types'
+import type { Channel, RoomCredentials } from '../lib/types'
 import { errorMessage } from '../lib/supabase'
 import '@livekit/components-styles'
 
 type Point = { x: number; y: number }
 type Stroke = { id: string; points: Point[]; owner: string }
 type Tool = 'view' | 'laser' | 'pen'
+type ModerateAction = 'mute_mic' | 'unmute_mic' | 'kick' | 'move'
+type Moderate = (action: ModerateAction, targetUserId: string, destinationChannelId?: string) => Promise<{ ok?: boolean; action?: string; via?: string; channelId?: string; channelName?: string; error?: string }>
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
-export default function LiveRoom({ credentials, leave }: { credentials: RoomCredentials; leave: () => void }) {
+function roleBadge(participant: { metadata?: string }) {
+  try {
+    const role = JSON.parse(participant.metadata || '{}').role
+    return role?.name ? <span className="tile-role" style={{ color: role.color, borderColor: role.color }}><BadgeCheck size={10} />{role.name}</span> : null
+  } catch { return null }
+}
+
+export default function LiveRoom({ credentials, leave, canModerate, moveTargets, moderate }: {
+  credentials: RoomCredentials; leave: () => void
+  canModerate: boolean; moveTargets: Channel[]; moderate: Moderate
+}) {
   return <LiveKitRoom serverUrl={credentials.url} token={credentials.token} connect audio={false} video={false}
     options={{ adaptiveStream: true, dynacast: true, publishDefaults: { screenShareEncoding: ScreenSharePresets.h1080fps30.encoding, screenShareSimulcastLayers: [ScreenSharePresets.h720fps15] } }}
     onError={error => toast.error(errorMessage(error))} onDisconnected={leave} className="live-room">
-    <RoomView />
+    <RoomView canModerate={canModerate} moveTargets={moveTargets} moderate={moderate} />
   </LiveKitRoom>
 }
 
@@ -105,7 +118,63 @@ function ScreenSurface({ track, tool }: { track: TrackReference; tool: Tool }) {
   </div>
 }
 
-function RoomView() {
+// Floating picture-in-picture control panel: stays on top of the screen being shared.
+function FloatingPanel({ remoteScreen, raised, onClose }: { remoteScreen?: TrackReference; raised: string[]; onClose: () => void }) {
+  const room = useRoomContext()
+  const participants = useParticipants()
+  const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } = useLocalParticipant()
+  const [busy, setBusy] = useState(false)
+  async function action(fn: () => Promise<unknown>) {
+    setBusy(true)
+    try { await fn() } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
+  }
+  return <div className="pip-panel">
+    <div className="pip-header"><span><i className="status-dot" />Painel da sala</span><button aria-label="Fechar painel" onClick={onClose}><PhoneOff size={13} /></button></div>
+    {remoteScreen && <div className="pip-screen"><VideoTrack trackRef={remoteScreen} /><span>{remoteScreen.participant.name || 'Builder'} está compartilhando</span></div>}
+    <div className="pip-people">{participants.map(p => <div key={p.identity} className={p.isSpeaking ? 'speaking' : ''}>
+      <Avatar name={p.name || 'Builder'} size="tiny" /><span>{p.isLocal ? 'Você' : p.name || 'Builder'}</span>
+      {raised.includes(p.identity) && <Hand size={12} className="raised" />}{p.isMicrophoneEnabled ? <Mic size={11} /> : <MicOff size={11} />}
+    </div>)}</div>
+    <div className="pip-controls">
+      <button className={!isMicrophoneEnabled ? 'off' : ''} disabled={busy} title={isMicrophoneEnabled ? 'Desativar microfone' : 'Ativar microfone'} onClick={() => void action(() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled))}>{isMicrophoneEnabled ? <Mic size={16} /> : <MicOff size={16} />}</button>
+      <button disabled={busy} title={isCameraEnabled ? 'Desativar câmera' : 'Ativar câmera'} onClick={() => void action(() => localParticipant.setCameraEnabled(!isCameraEnabled))}>{isCameraEnabled ? <Camera size={16} /> : <CameraOff size={16} />}</button>
+      <button className={isScreenShareEnabled ? 'active' : ''} disabled={busy} title={isScreenShareEnabled ? 'Parar de compartilhar' : 'Compartilhar tela'} onClick={() => void action(() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled, { audio: true, resolution: { width: 1920, height: 1080, frameRate: 30 }, contentHint: 'text' }))}><MonitorUp size={16} /></button>
+      <button className="hangup" title="Sair da sala" onClick={() => void room.disconnect()}><PhoneOff size={16} /></button>
+    </div>
+  </div>
+}
+
+function ParticipantMenu({ participant, moveTargets, moderate, close }: {
+  participant: RemoteParticipant; moveTargets: Channel[]; moderate: Moderate; close: () => void
+}) {
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [moving, setMoving] = useState(false)
+  useEffect(() => {
+    const away = (e: MouseEvent) => { if (!menuRef.current?.contains(e.target as Node)) close() }
+    document.addEventListener('mousedown', away)
+    return () => document.removeEventListener('mousedown', away)
+  }, [close])
+  const mic = participant.getTrackPublication(Track.Source.Microphone)
+  async function act(action: ModerateAction, destinationChannelId?: string) {
+    try {
+      const result = await moderate(action, participant.identity, destinationChannelId)
+      if (action === 'move') toast.success(result.via === 'livekit' ? `${participant.name} movido para ${result.channelName}.` : `${participant.name} foi desconectado e entrará em ${result.channelName}.`)
+      else if (action === 'kick') toast.success(`${participant.name} foi removido da sala.`)
+      else toast.success(action === 'mute_mic' ? `${participant.name} foi silenciado.` : `Voz devolvida a ${participant.name}.`)
+    } catch (e) { toast.error(errorMessage(e)) }
+    close()
+  }
+  return <div className="moderate-menu" ref={menuRef}>
+    {mic && !mic.isMuted && <button onClick={() => void act('mute_mic')}><VolumeX size={15} />Silenciar</button>}
+    {mic?.isMuted && <button onClick={() => void act('unmute_mic')}><Volume1 size={15} />Devolver a voz</button>}
+    {!mic && <button onClick={() => void act('unmute_mic')}><Volume1 size={15} />Devolver a voz</button>}
+    {moveTargets.length > 0 && <button onClick={() => setMoving(!moving)}><Volume2 size={15} />Mover para…</button>}
+    {moving && <div className="moderate-submenu">{moveTargets.map(c => <button key={c.id} onClick={() => void act('move', c.id)}><Volume2 size={14} />{c.name}</button>)}</div>}
+    <button className="danger" onClick={() => void act('kick')}><UserMinus size={15} />Expulsar da sala</button>
+  </div>
+}
+
+function RoomView({ canModerate, moveTargets, moderate }: { canModerate: boolean; moveTargets: Channel[]; moderate: Moderate }) {
   const room = useRoomContext()
   const participants = useParticipants()
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } = useLocalParticipant()
@@ -115,10 +184,13 @@ function RoomView() {
   const [deafened, setDeafened] = useState(false)
   const [raised, setRaised] = useState<string[]>([])
   const [activeScreen, setActiveScreen] = useState<string | null>(null)
+  const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [pipWindow, setPipWindow] = useState<Window | null>(null)
   const [busy, setBusy] = useState(false)
   const stage = useRef<HTMLDivElement>(null)
   const screens = tracks.filter(t => t.source === Track.Source.ScreenShare)
   const screen = screens.find(t => t.publication.trackSid === activeScreen) || screens[0]
+  const remoteScreen = screens.find(t => !t.participant.isLocal)
   const meRaised = raised.includes(localParticipant.identity)
   useEffect(() => {
     const receive = (bytes: Uint8Array, participant?: RemoteParticipant, _kind?: unknown, topic?: string) => {
@@ -127,10 +199,31 @@ function RoomView() {
       if (value !== 'up' && value !== 'down') return
       setRaised(current => value === 'up' ? [...new Set([...current, participant.identity])] : current.filter(id => id !== participant.identity))
     }
-    const left = (participant: RemoteParticipant) => setRaised(current => current.filter(id => id !== participant.identity))
+    const left = (participant: RemoteParticipant) => { setRaised(current => current.filter(id => id !== participant.identity)); setMenuFor(current => current === participant.identity ? null : current) }
     room.on(RoomEvent.DataReceived, receive); room.on(RoomEvent.ParticipantDisconnected, left)
     return () => { room.off(RoomEvent.DataReceived, receive); room.off(RoomEvent.ParticipantDisconnected, left) }
   }, [room])
+  // Offer the floating panel as soon as screen sharing starts (needs a user gesture in some browsers).
+  useEffect(() => { if (isScreenShareEnabled && !pipWindow) void openPip() }, [isScreenShareEnabled])
+  useEffect(() => () => pipWindow?.close(), [pipWindow])
+  async function openPip() {
+    if (pipWindow && !pipWindow.closed) { pipWindow.focus(); return }
+    const api = (window as { documentPictureInPicture?: { requestWindow: (o: { width: number; height: number }) => Promise<Window> } }).documentPictureInPicture
+    if (!api) { toast.info('Seu navegador ainda não abre janelas flutuantes. Use Chrome ou Edge.'); return }
+    try {
+      const pip = await api.requestWindow({ width: 400, height: 460 })
+      for (const sheet of Array.from(document.styleSheets)) {
+        try {
+          if (sheet.href) { const link = pip.document.createElement('link'); link.rel = 'stylesheet'; link.href = sheet.href; pip.document.head.appendChild(link) }
+          else { const style = pip.document.createElement('style'); style.textContent = Array.from(sheet.cssRules).map(r => r.cssText).join('\n'); pip.document.head.appendChild(style) }
+        } catch { /* Skip cross-origin stylesheets. */ }
+      }
+      pip.document.documentElement.setAttribute('data-theme', 'dark')
+      pip.document.body.className = 'pip-body'
+      pip.addEventListener('pagehide', () => setPipWindow(null))
+      setPipWindow(pip)
+    } catch { /* User declined or API unavailable — the in-app controls still work. */ }
+  }
   async function action(fn: () => Promise<unknown>) {
     setBusy(true)
     try { await fn() } catch (e) { toast.error(errorMessage(e)) }
@@ -142,6 +235,7 @@ function RoomView() {
   }
   return <>
     <RoomAudioRenderer muted={deafened} />
+    {pipWindow && createPortal(<FloatingPanel remoteScreen={remoteScreen} raised={raised} onClose={() => pipWindow.close()} />, pipWindow.document.body)}
     <div className="live-status"><span><i className="status-dot" />{state === ConnectionState.Connected ? 'Você está na sala' : 'Reconectando…'}</span><span>{participants.length} {participants.length === 1 ? 'pessoa' : 'pessoas'} · áudio ao vivo</span></div>
     <div className="live-stage" ref={stage}>
       {screen ? <ScreenSurface key={screen.publication.trackSid} track={screen} tool={tool} /> : <div className="no-share"><div className="no-share-icon"><MonitorUp size={42} /></div><span className="eyebrow">ESPAÇO PARA SUAS IDEIAS</span><h2>Mostre o que você está construindo.</h2><p>Compartilhe uma aba, janela ou sua tela inteira.<br />A turma acompanha e participa aqui.</p><button className="primary" disabled={busy} onClick={() => void action(() => localParticipant.setScreenShareEnabled(true, { audio: true, resolution: { width: 1920, height: 1080, frameRate: 30 }, contentHint: 'text' }))}><MonitorUp size={17} />Compartilhar minha tela</button></div>}
@@ -150,12 +244,17 @@ function RoomView() {
     {screens.length > 1 && <div className="screen-selector">{screens.map(s => <button key={s.publication.trackSid} className={s === screen ? 'selected' : ''} onClick={() => setActiveScreen(s.publication.trackSid)}><MonitorUp size={14} /> {s.participant.name}</button>)}</div>}
     <div className="participant-strip">{participants.map(p => {
       const camera = tracks.find(t => t.participant.identity === p.identity && t.source === Track.Source.Camera)
-      return <div className={`participant-tile ${p.isSpeaking ? 'speaking' : ''}`} key={p.identity}>{camera ? <VideoTrack trackRef={camera} /> : <Avatar name={p.name || 'Builder'} />}<div><span>{p.isLocal ? 'Você' : p.name || 'Builder'}</span>{raised.includes(p.identity) && <Hand size={14} className="raised" />}{p.isMicrophoneEnabled ? <Mic size={13} /> : <MicOff size={13} />}</div></div>
+      return <div className={`participant-tile ${p.isSpeaking ? 'speaking' : ''}`} key={p.identity}>
+        {camera ? <VideoTrack trackRef={camera} /> : <Avatar name={p.name || 'Builder'} />}
+        <div><span>{p.isLocal ? 'Você' : p.name || 'Builder'}{roleBadge(p)}</span>{raised.includes(p.identity) && <Hand size={14} className="raised" />}{p.isMicrophoneEnabled ? <Mic size={13} /> : <MicOff size={13} />}</div>
+        {canModerate && !p.isLocal && <button className="tile-moderate" aria-label={`Moderar ${p.name}`} title="Moderar participante" onClick={() => setMenuFor(menuFor === p.identity ? null : p.identity)}><Volume2 size={14} /></button>}
+        {canModerate && !p.isLocal && menuFor === p.identity && <ParticipantMenu participant={p as RemoteParticipant} moveTargets={moveTargets} moderate={moderate} close={() => setMenuFor(null)} />}
+      </div>
     })}</div>
     <div className="call-controls">
       <div><button className={!isMicrophoneEnabled ? 'off' : ''} disabled={busy} title={isMicrophoneEnabled ? 'Desativar microfone' : 'Ativar microfone'} aria-label={isMicrophoneEnabled ? 'Desativar microfone' : 'Ativar microfone'} onClick={() => void action(() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled))}>{isMicrophoneEnabled ? <Mic /> : <MicOff />}</button><button disabled={busy} title={isCameraEnabled ? 'Desativar câmera' : 'Ativar câmera'} aria-label={isCameraEnabled ? 'Desativar câmera' : 'Ativar câmera'} onClick={() => void action(() => localParticipant.setCameraEnabled(!isCameraEnabled))}>{isCameraEnabled ? <Camera /> : <CameraOff />}</button><button title={deafened ? 'Ouvir a sala' : 'Silenciar áudio recebido'} aria-label={deafened ? 'Ouvir a sala' : 'Silenciar áudio recebido'} onClick={() => setDeafened(!deafened)}>{deafened ? <VolumeX /> : <Volume2 />}</button></div>
       <button className={`share-control ${isScreenShareEnabled ? 'active' : ''}`} disabled={busy} onClick={() => void action(() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled, { audio: true, resolution: { width: 1920, height: 1080, frameRate: 30 }, contentHint: 'text' }))}><MonitorUp size={19} /><span>{isScreenShareEnabled ? 'Parar de compartilhar' : 'Compartilhar tela'}</span></button>
-      <div><button className={meRaised ? 'active' : ''} title={meRaised ? 'Abaixar mão' : 'Levantar mão'} aria-label={meRaised ? 'Abaixar mão' : 'Levantar mão'} onClick={() => void action(hand)}><Hand /></button><button className="hangup" title="Sair da sala" aria-label="Sair da sala" onClick={() => void room.disconnect()}><PhoneOff /></button></div>
+      <div><button title="Painel flutuante (controla a sala sobre a tela compartilhada)" aria-label="Abrir painel flutuante" onClick={() => void openPip()}><PictureInPicture2 /></button><button className={meRaised ? 'active' : ''} title={meRaised ? 'Abaixar mão' : 'Levantar mão'} aria-label={meRaised ? 'Abaixar mão' : 'Levantar mão'} onClick={() => void action(hand)}><Hand /></button><button className="hangup" title="Sair da sala" aria-label="Sair da sala" onClick={() => void room.disconnect()}><PhoneOff /></button></div>
     </div>
     <div className="live-footnote">Compartilhamento em até 1080p · A qualidade se adapta à conexão · Marcações são temporárias</div>
   </>

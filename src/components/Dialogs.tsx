@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Check, Copy, Link, Plus, Search } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, Copy, Link, Plus, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { db, errorMessage, rpc } from '../lib/supabase'
-import type { Channel, Message, Profile } from '../lib/types'
+import type { Channel, Message, Profile, Role, RoleFlag } from '../lib/types'
 import { Modal } from './ui'
 
 export function CreateServer({ close, created }: { close: () => void; created: (id: string) => void }) {
@@ -52,6 +52,56 @@ export function ProfileSettings({ profile, close, updated }: { profile: Profile;
     } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
   }
   return <Modal title="Como a comunidade vê você." close={close}><form onSubmit={submit}><label>Nome de exibição<input name="name" defaultValue={profile.display_name} required minLength={2} maxLength={60} /></label><label>Seu identificador<input name="handle" defaultValue={profile.handle} required minLength={3} maxLength={32} pattern="[a-z0-9_]{3,32}" /></label><p className="muted">Use letras minúsculas, números e _. Seus amigos encontram você por esse identificador.</p><button className="primary full" disabled={busy}>{busy ? 'Salvando…' : 'Salvar perfil'}</button></form></Modal>
+}
+const ROLE_FLAGS: { flag: RoleFlag; label: string; hint: string }[] = [
+  { flag: 'moderate_voice', label: 'Moderar voz', hint: 'Silenciar, expulsar e mover pessoas nas salas' },
+  { flag: 'manage_channels', label: 'Gerenciar canais', hint: 'Criar canais de texto e voz' },
+  { flag: 'manage_roles', label: 'Gerenciar cargos', hint: 'Criar e atribuir cargos' },
+  { flag: 'manage_invites', label: 'Gerenciar convites', hint: 'Gerar e revogar links de convite' },
+  { flag: 'kick_members', label: 'Expulsar membros', hint: 'Remover pessoas do servidor' },
+  { flag: 'edit_notes', label: 'Editar notas', hint: 'Escrever nas notas compartilhadas' },
+]
+const roleFlags = (role: Partial<Role>, form?: HTMLFormElement) => Object.fromEntries(ROLE_FLAGS.map(({ flag }) =>
+  [flag, form ? Boolean((form.elements.namedItem(`perm_${flag}`) as HTMLInputElement)?.checked) : Boolean(role[flag])])) as Record<RoleFlag, boolean>
+
+export function ManageRoles({ serverId, roles, close, changed }: { serverId: string; roles: Role[]; close: () => void; changed: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const sorted = [...roles].sort((a, b) => a.position - b.position)
+  async function run(fn: () => Promise<unknown>) {
+    setBusy(true)
+    try { await fn(); changed() } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
+  }
+  async function create(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault(); const form = e.currentTarget; const values = new FormData(form)
+    await run(async () => {
+      await rpc('ddtal_create_role', { p_server: serverId, p_name: values.get('name'), p_color: values.get('color'), p_flags: roleFlags({}, form) })
+      form.reset(); toast.success('Cargo criado.')
+    })
+  }
+  const update = (role: Role) => (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault(); const form = e.currentTarget; const values = new FormData(form)
+    void run(async () => { await rpc('ddtal_update_role', { p_role: role.id, p_name: values.get('name'), p_color: values.get('color'), p_flags: roleFlags({}, form) }); toast.success('Cargo atualizado.') })
+  }
+  return <Modal title="Cargos e permissões." close={close}><p className="muted">Cargos organizam sua comunidade e liberam permissões. Donos e moderadores já têm todos os poderes.</p>
+    {sorted.length > 0 && <div className="roles-list">{sorted.map((role, i) => <details className="role-item" key={role.id}>
+      <summary><i className="role-dot" style={{ background: role.color }} />{role.name}<span className="role-summary-actions">
+        <button aria-label="Subir cargo" title="Subir cargo" disabled={busy || i === 0} onClick={e => { e.preventDefault(); void run(() => rpc('ddtal_move_role', { p_role: role.id, p_dir: -1 })) }}><ArrowUp size={14} /></button>
+        <button aria-label="Descer cargo" title="Descer cargo" disabled={busy || i === sorted.length - 1} onClick={e => { e.preventDefault(); void run(() => rpc('ddtal_move_role', { p_role: role.id, p_dir: 1 })) }}><ArrowDown size={14} /></button>
+        <button aria-label="Excluir cargo" title="Excluir cargo" disabled={busy} onClick={e => { e.preventDefault(); void run(() => rpc('ddtal_delete_role', { p_role: role.id })) }}><Trash2 size={14} /></button></span></summary>
+      <form className="role-form" onSubmit={update(role)}>
+        <div className="role-fields"><label>Nome<input name="name" defaultValue={role.name} required maxLength={40} /></label><label>Cor<input name="color" type="color" defaultValue={role.color} /></label></div>
+        <div className="perm-grid">{ROLE_FLAGS.map(({ flag, label, hint }) => <label key={flag} className="perm-check" title={hint}><input type="checkbox" name={`perm_${flag}`} defaultChecked={role[flag]} /><span>{label}</span></label>)}</div>
+        <button className="secondary full" disabled={busy}>Salvar cargo</button>
+      </form>
+    </details>)}</div>}
+    <form className="role-form role-create" onSubmit={create}>
+      <strong>Novo cargo</strong>
+      <div className="role-fields"><label>Nome<input name="name" required maxLength={40} placeholder="Ex.: Mr Robot" /></label><label>Cor<input name="color" type="color" defaultValue="#b69afb" /></label></div>
+      <div className="perm-grid">{ROLE_FLAGS.map(({ flag, label, hint }) => <label key={flag} className="perm-check" title={hint}><input type="checkbox" name={`perm_${flag}`} /><span>{label}</span></label>)}</div>
+      <button className="primary full" disabled={busy}><Plus size={17} />{busy ? 'Salvando…' : 'Criar cargo'}</button>
+    </form>
+    <p className="modal-footnote">Para atribuir um cargo a alguém, abra o menu do membro no painel “Pessoas”.</p>
+  </Modal>
 }
 export function SearchMessages({ channel, close }: { channel: Channel; close: () => void }) {
   const [results, setResults] = useState<Message[]>([])

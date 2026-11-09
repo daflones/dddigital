@@ -8,13 +8,14 @@ import { Chat } from './components/Chat'
 import { Notes } from './components/Notes'
 import { ClassroomLobby } from './components/Classroom'
 import { Friends } from './components/Friends'
-import { CreateChannel, CreateServer, Invite, ProfileSettings, SearchMessages } from './components/Dialogs'
+import { CreateChannel, CreateServer, Invite, ManageRoles, ProfileSettings, SearchMessages } from './components/Dialogs'
+import { MembersPanel } from './components/Members'
 import { db, errorMessage, rpc, supabase } from './lib/supabase'
 import { demoChannels, demoMembers, demoProfile, demoServer } from './lib/demo'
-import type { Channel, Membership, Profile, RoomCredentials, Server } from './lib/types'
+import type { Channel, Membership, MemberRole, Profile, Role, RoleFlag, RoomCredentials, Server } from './lib/types'
 
 const LiveRoom = lazy(() => import('./components/LiveRoom'))
-type DialogName = 'server' | 'channel' | 'invite' | 'profile' | 'search' | 'help' | null
+type DialogName = 'server' | 'channel' | 'invite' | 'profile' | 'search' | 'help' | 'roles' | null
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
@@ -70,6 +71,8 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
   const [channels, setChannels] = useState<Channel[]>(demo ? demoChannels : [])
   const [channelId, setChannelId] = useState<string | null>(demo ? 'demo-class' : null)
   const [members, setMembers] = useState<Membership[]>(demo ? demoMembers : [])
+  const [roles, setRoles] = useState<Role[]>([])
+  const [memberRoles, setMemberRoles] = useState<MemberRole[]>([])
   const [view, setView] = useState<'server' | 'friends'>('server')
   const [panel, setPanel] = useState<'chat' | 'notes' | 'members'>('chat')
   const [dialog, setDialog] = useState<DialogName>(null)
@@ -84,6 +87,8 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
   const currentServer = servers.find(s => s.id === serverId)
   const channel = channels.find(c => c.id === channelId)
   const staff = currentServer?.owner_id === profile.id || members.some(m => m.user_id === profile.id && m.role === 'moderator')
+  const myRoles = memberRoles.filter(mr => mr.user_id === profile.id).map(mr => roles.find(r => r.id === mr.role_id)).filter((r): r is Role => Boolean(r))
+  const can = useCallback((flag: RoleFlag) => staff || myRoles.some(r => r[flag]), [staff, myRoles])
   const voice = channel?.kind === 'voice' || channel?.kind === 'direct'
   const activeRoomVisible = view === 'server' && room?.channel.id === channel?.id
 
@@ -118,18 +123,26 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
     }).catch(e => setInviteError(errorMessage(e)))
   }, [demo, load])
   useEffect(() => {
-    if (demo || !serverId) { if (!serverId) setMembers([]); return }
+    if (demo || !serverId) { if (!serverId) { setMembers([]); setRoles([]); setMemberRoles([]) } return }
     let active = true
     setMembers([])
     async function refresh() {
-      const { data, error } = await db().from('ddtal_members').select('user_id,role,profile:ddtal_profiles!user_id(*)').eq('server_id', serverId!)
+      const [m, r, mr] = await Promise.all([
+        db().from('ddtal_members').select('user_id,role,profile:ddtal_profiles!user_id(*)').eq('server_id', serverId!),
+        db().from('ddtal_roles').select('*').eq('server_id', serverId!).order('position'),
+        db().from('ddtal_member_roles').select('user_id,role_id').eq('server_id', serverId!),
+      ])
       if (!active) return
-      if (error) toast.error(error.message)
-      else setMembers(data as unknown as Membership[])
+      if (m.error) toast.error(m.error.message)
+      else setMembers(m.data as unknown as Membership[])
+      if (!r.error) setRoles(r.data as Role[])
+      if (!mr.error) setMemberRoles(mr.data as MemberRole[])
     }
     void refresh()
     const sub = db().channel(`ddtal-server-${serverId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ddtal_members', filter: `server_id=eq.${serverId}` }, () => void refresh())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ddtal_roles', filter: `server_id=eq.${serverId}` }, () => void refresh())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ddtal_member_roles', filter: `server_id=eq.${serverId}` }, () => void refresh())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ddtal_channels', filter: `server_id=eq.${serverId}` }, () => void load())
       .subscribe(status => { if (status === 'SUBSCRIBED') { void refresh(); void load() } })
     return () => { active = false; void db().removeChannel(sub) }
@@ -144,6 +157,56 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
   function requireAccount(fn: () => void) { if (demo) { toast.info('Entre na sua conta para conectar sua comunidade.'); exitDemo() } else fn() }
   function selectChannel(id: string) { setChannelId(id); setView('server'); setMobileNav(false) }
   function selectServer(id: string) { setServerId(id); setChannelId(null); setView('server') }
+  async function joinById(channelId: string) {
+    let target = channels.find(c => c.id === channelId)
+    if (!target) {
+      const { data } = await db().from('ddtal_channels').select('*').eq('id', channelId).single()
+      if (data) { target = data as Channel; setChannels(current => [...current.filter(c => c.id !== channelId), target!]) }
+    }
+    if (!target) return
+    selectChannel(target.id)
+    await join(target)
+  }
+  const refreshRoles = useCallback(async () => {
+    if (demo || !serverId) return
+    const [r, mr] = await Promise.all([
+      db().from('ddtal_roles').select('*').eq('server_id', serverId).order('position'),
+      db().from('ddtal_member_roles').select('user_id,role_id').eq('server_id', serverId),
+    ])
+    if (!r.error) setRoles(r.data as Role[])
+    if (!mr.error) setMemberRoles(mr.data as MemberRole[])
+  }, [demo, serverId])
+  // Voice moderation: forwards to the edge function; on a "move" fallback also
+  // signals the target's client so it rejoins the destination channel.
+  async function moderate(action: 'mute_mic' | 'unmute_mic' | 'kick' | 'move', channelId: string, targetUserId: string, destinationChannelId?: string) {
+    const { data, error } = await db().functions.invoke('ddtal-moderate-voice', { body: { action, channelId, targetUserId, destinationChannelId } })
+    if (error) {
+      let detail = error.message
+      try { detail = (await error.context?.json())?.error || detail } catch { /* keep message */ }
+      throw new Error(detail)
+    }
+    if (data?.error) throw new Error(data.error)
+    if (action === 'move' && data?.channelId) void sendSignal(targetUserId, { type: 'move', channelId: data.channelId, channelName: data.channelName })
+    return data
+  }
+  async function sendSignal(userId: string, payload: object) {
+    const signal = db().channel(`ddtal-signal-${userId}`)
+    signal.subscribe(status => {
+      if (status === 'SUBSCRIBED') {
+        void signal.send({ type: 'broadcast', event: 'move', payload }).finally(() => void db().removeChannel(signal))
+      }
+    })
+  }
+  // Listen for moderator signals (e.g. being moved between voice rooms).
+  useEffect(() => {
+    if (demo) return
+    const signal = db().channel(`ddtal-signal-${profile.id}`)
+      .on('broadcast', { event: 'move' }, ({ payload }) => {
+        toast.info(`Você foi movido para ${payload.channelName || 'outra sala'}.`)
+        void joinById(String(payload.channelId))
+      }).subscribe()
+    return () => { void db().removeChannel(signal) }
+  }, [demo, profile.id])
   async function join(target = channel) {
     if (!target) return
     if (demo) return requireAccount(() => {})
@@ -186,10 +249,10 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
       <div className="sidebar-scroll">
         <div className="community-banner"><span><Sparkles size={14} /> CONSTRUA SEU PRÓXIMO NÍVEL</span><strong>30 dias. Infinitas possibilidades.</strong><p>Uma comunidade. Um passo por dia.</p><div className="community-progress">{Array.from({ length: 30 }, (_, i) => <i key={i} className={i < 7 ? 'filled' : ''} />)}</div><small>DA PRIMEIRA IDEIA AO PRIMEIRO DEPLOY</small></div>
         <button className={`sidebar-nav-item ${view === 'friends' ? 'active' : ''}`} onClick={() => { setView('friends'); setMobileNav(false) }}><Users size={18} />Amigos<ArrowRight size={15} /></button>
-        <div className="channel-group"><div className="group-heading"><span><ChevronDown size={12} />CANAIS DE TEXTO</span>{staff && <button aria-label="Criar canal de texto" title="Criar canal" onClick={() => requireAccount(() => setDialog('channel'))}><Plus size={15} /></button>}</div>{channels.filter(c => c.server_id === serverId && c.kind === 'text').map(c => <button className={`channel-link ${view === 'server' && channelId === c.id ? 'active' : ''}`} key={c.id} onClick={() => selectChannel(c.id)}><Hash size={19} /><span>{c.name}</span>{c.name === 'avisos' && <span className="channel-tiny-dot" />}</button>)}</div>
-        <div className="channel-group"><div className="group-heading"><span><ChevronDown size={12} />SALAS DE VOZ</span>{staff && <button title="Criar sala" aria-label="Criar sala de voz" onClick={() => requireAccount(() => setDialog('channel'))}><Plus size={15} /></button>}</div>{channels.filter(c => c.server_id === serverId && c.kind === 'voice').map(c => <div key={c.id}><button className={`channel-link voice-link ${view === 'server' && channelId === c.id ? 'active' : ''}`} onClick={() => selectChannel(c.id)}><Volume2 size={19} /><span>{c.name}</span>{room?.channel.id === c.id && <AudioLines size={16} className="green" />}</button>{demo && c.id === 'demo-class' && <div className="preview-members">{demoMembers.slice(0, 3).map(m => <div key={m.user_id}><Avatar name={m.profile.display_name} size="tiny" /><span>{m.profile.display_name}</span>{m.role === 'owner' && <span className="host-label">HOST</span>}</div>)}<span className="preview-caption">Participantes ilustrativos</span></div>}</div>)}</div>
+        <div className="channel-group"><div className="group-heading"><span><ChevronDown size={12} />CANAIS DE TEXTO</span>{can('manage_channels') && <button aria-label="Criar canal de texto" title="Criar canal" onClick={() => requireAccount(() => setDialog('channel'))}><Plus size={15} /></button>}</div>{channels.filter(c => c.server_id === serverId && c.kind === 'text').map(c => <button className={`channel-link ${view === 'server' && channelId === c.id ? 'active' : ''}`} key={c.id} onClick={() => selectChannel(c.id)}><Hash size={19} /><span>{c.name}</span>{c.name === 'avisos' && <span className="channel-tiny-dot" />}</button>)}</div>
+        <div className="channel-group"><div className="group-heading"><span><ChevronDown size={12} />SALAS DE VOZ</span>{can('manage_channels') && <button title="Criar sala" aria-label="Criar sala de voz" onClick={() => requireAccount(() => setDialog('channel'))}><Plus size={15} /></button>}</div>{channels.filter(c => c.server_id === serverId && c.kind === 'voice').map(c => <div key={c.id}><button className={`channel-link voice-link ${view === 'server' && channelId === c.id ? 'active' : ''}`} onClick={() => selectChannel(c.id)}><Volume2 size={19} /><span>{c.name}</span>{room?.channel.id === c.id && <AudioLines size={16} className="green" />}</button>{demo && c.id === 'demo-class' && <div className="preview-members">{demoMembers.slice(0, 3).map(m => <div key={m.user_id}><Avatar name={m.profile.display_name} size="tiny" /><span>{m.profile.display_name}</span>{m.role === 'owner' && <span className="host-label">HOST</span>}</div>)}<span className="preview-caption">Participantes ilustrativos</span></div>}</div>)}</div>
         {channels.some(c => c.kind === 'direct') && <div className="channel-group"><div className="group-heading"><span>MENSAGENS DIRETAS</span></div>{channels.filter(c => c.kind === 'direct').map(c => <button key={c.id} className={`channel-link ${channelId === c.id && view === 'server' ? 'active' : ''}`} onClick={() => selectChannel(c.id)}><MessageCircle size={18} /><span>{c.name}</span></button>)}</div>}
-        {currentServer && <button className="invite-sidebar" onClick={() => requireAccount(() => staff ? setDialog('invite') : toast.info('Peça um convite à equipe do servidor.'))}><UserPlus size={17} /><span>Convide sua comunidade</span><Plus size={14} /></button>}
+        {currentServer && <button className="invite-sidebar" onClick={() => requireAccount(() => can('manage_invites') ? setDialog('invite') : toast.info('Peça um convite à equipe do servidor.'))}><UserPlus size={17} /><span>Convide sua comunidade</span><Plus size={14} /></button>}
       </div>
       {room && <button className="connected-indicator" onClick={() => selectChannel(room.channel.id)}><AudioLines size={18} /><span><strong>Conectado à sala</strong><small>{room.channel.name}</small></span><ChevronRight size={15} /></button>}
       <div className="user-dock"><button className="profile-button" onClick={() => requireAccount(() => setDialog('profile'))}><Avatar name={profile.display_name} size="small" online /><span><strong>{profile.display_name}</strong><small>{demo ? 'Explorando o espaço' : 'Pronto para conectar'}</small></span></button><button className="icon-button" title="Meu perfil" aria-label="Meu perfil" onClick={() => requireAccount(() => setDialog('profile'))}><Settings2 size={18} /></button></div>
@@ -200,10 +263,13 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
       {loadError && <div className="workspace-alert" role="alert">{loadError}<button className="text-button" onClick={() => void load()}>Tentar novamente</button></div>}
       <div className={`workspace-body ${voice && view === 'server' ? 'with-panel' : ''}`}>
         <main className="workspace-main">
-          {room && <div className="live-container" style={{ display: activeRoomVisible ? 'flex' : 'none' }}><Suspense fallback={<div className="center-muted">Preparando chamada…</div>}><LiveRoom key={room.channel.id} credentials={room} leave={leave} /></Suspense></div>}
+          {room && <div className="live-container" style={{ display: activeRoomVisible ? 'flex' : 'none' }}><Suspense fallback={<div className="center-muted">Preparando chamada…</div>}><LiveRoom key={room.channel.id} credentials={room} leave={leave}
+            canModerate={room.channel.kind === 'direct' || can('moderate_voice')}
+            moveTargets={channels.filter(c => c.kind === 'voice' && c.id !== room.channel.id)}
+            moderate={(action, targetUserId, destinationChannelId) => moderate(action, room.channel.id, targetUserId, destinationChannelId)} /></Suspense></div>}
           {view === 'friends' ? <Friends profile={profile} demo={demo} openDM={openDM} /> : !channel ? <div className="empty-workspace"><div className="empty-logo"><AudioLines size={44} /></div><span className="eyebrow">SEU ESPAÇO PARA IR ALÉM</span><h1>{loading ? 'Preparando suas conexões…' : 'Toda comunidade começa com alguém.'}</h1><p>{loading ? 'Só um instante.' : 'Crie um servidor para sua turma ou abra o link de convite que recebeu.'}</p>{!loading && <button className="primary" onClick={() => requireAccount(() => setDialog('server'))}><Plus size={18} />Criar meu primeiro servidor</button>}</div> : voice ? !activeRoomVisible && <ClassroomLobby channel={channel} members={channel.kind === 'direct' ? [] : members} demo={demo} joining={joining} join={() => void join()} /> : <Chat key={channel.id} channel={channel} profile={profile} demo={demo} />}
         </main>
-        {voice && channel && view === 'server' && <aside className={`conversation-panel ${mobilePanel ? 'mobile-panel-open' : ''}`}><div className="panel-tabs"><button className={panel === 'chat' ? 'active' : ''} onClick={() => setPanel('chat')}><MessageSquare size={15} />Chat</button><button className={panel === 'notes' ? 'active' : ''} onClick={() => setPanel('notes')}><BookOpen size={15} />Notas</button><button className={panel === 'members' ? 'active' : ''} onClick={() => setPanel('members')}><Users size={15} />Pessoas</button><button className="icon-button mobile-only" aria-label="Fechar painel" onClick={() => setMobilePanel(false)}><X size={16} /></button></div>{panel === 'chat' ? <><div className="panel-subheading"><span>O PAPO CONTINUA AQUI</span><MessageCircle size={14} /></div><Chat key={channel.id} channel={channel} profile={profile} demo={demo} compact /></> : panel === 'notes' ? <Notes key={channel.id} channelId={channel.id} userId={profile.id} canEdit={staff || channel.kind === 'direct'} demo={demo} /> : <div className="members-panel"><div className="eyebrow">{channel.kind === 'direct' ? 'CONVERSA PRIVADA' : `MEMBROS DO SERVIDOR — ${members.length}`}</div>{channel.kind === 'direct' ? <p className="muted">Esta conversa é visível apenas para você e {channel.name}.</p> : members.map(m => <div className="member-row" key={m.user_id}><Avatar name={m.profile.display_name} size="small" /><div><strong>{m.profile.display_name}</strong><span>{m.role === 'owner' ? 'Criador · professor' : m.role === 'moderator' ? 'Equipe' : `@${m.profile.handle}`}</span></div>{m.role === 'owner' && <ShieldCheck size={15} />}</div>)}{demo && <p className="muted">Perfis de exemplo. Nenhuma chamada está acontecendo nesta prévia.</p>}</div>}<div className="panel-footer"><span className="tiny-brand">d.</span><span>Conexões que fazem a diferença.</span></div></aside>}
+        {voice && channel && view === 'server' && <aside className={`conversation-panel ${mobilePanel ? 'mobile-panel-open' : ''}`}><div className="panel-tabs"><button className={panel === 'chat' ? 'active' : ''} onClick={() => setPanel('chat')}><MessageSquare size={15} />Chat</button><button className={panel === 'notes' ? 'active' : ''} onClick={() => setPanel('notes')}><BookOpen size={15} />Notas</button><button className={panel === 'members' ? 'active' : ''} onClick={() => setPanel('members')}><Users size={15} />Pessoas</button><button className="icon-button mobile-only" aria-label="Fechar painel" onClick={() => setMobilePanel(false)}><X size={16} /></button></div>{panel === 'chat' ? <><div className="panel-subheading"><span>O PAPO CONTINUA AQUI</span><MessageCircle size={14} /></div><Chat key={channel.id} channel={channel} profile={profile} demo={demo} compact /></> : panel === 'notes' ? <Notes key={channel.id} channelId={channel.id} userId={profile.id} canEdit={can('edit_notes') || channel.kind === 'direct'} demo={demo} /> : <MembersPanel channel={channel} members={members} roles={roles} memberRoles={memberRoles} can={can} profile={profile} demo={demo} openRoles={() => setDialog('roles')} changed={() => void refreshRoles()} />}<div className="panel-footer"><span className="tiny-brand">d.</span><span>Conexões que fazem a diferença.</span></div></aside>}
       </div>
       <footer className="workspace-footer"><span><span className="status-dot" />{demo ? 'Você está conhecendo o discodigital' : 'Um espaço feito para sua comunidade'}</span><span><Headphones size={13} />Menos distância. Mais possibilidades.<span className="footer-version">DDTAL / 0.1</span></span></footer>
       {voice && view === 'server' && <button className="mobile-chat-toggle" aria-label="Abrir chat da sala" onClick={() => { setPanel('chat'); setMobilePanel(true) }}><MessageSquare size={20} /></button>}
@@ -213,6 +279,7 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
     {dialog === 'invite' && currentServer && <Invite serverId={currentServer.id} serverName={currentServer.name} close={() => setDialog(null)} />}
     {dialog === 'profile' && <ProfileSettings profile={profile} close={() => setDialog(null)} updated={updateProfile} />}
     {dialog === 'search' && channel && <SearchMessages channel={channel} close={() => setDialog(null)} />}
+    {dialog === 'roles' && serverId && <ManageRoles serverId={serverId} roles={roles} close={() => setDialog(null)} changed={() => void refreshRoles()} />}
     {dialog === 'help' && <Modal title="Seu espaço, na mesma frequência." close={() => setDialog(null)}><div className="help-content"><Brand /><p>O discodigital conecta sua comunidade por texto, voz e tela. Um espaço para aprender fazendo.</p><div><Radio /><span><strong>Entre em uma sala</strong>Ative seu microfone, câmera ou compartilhe a tela. O navegador pede sua permissão.</span></div><div><BookOpen /><span><strong>Aprenda junto</strong>Use o ponteiro e a caneta sobre uma transmissão. Registre os pontos importantes nas notas da turma.</span></div><div><Users /><span><strong>Traga sua comunidade</strong>Crie um servidor e compartilhe o convite. Para conversas privadas, adicione amigos pelo identificador.</span></div><p className="muted">{demo ? 'Esta é uma prévia interativa com conteúdo ilustrativo. Crie sua conta para usar as conexões reais.' : 'Imagens são enviadas sem redimensionamento. Transmissões podem chegar a 1080p, conforme o navegador e a conexão.'}</p><span className="help-signature"><Check size={15} />Construído para a comunidade F.dev</span></div></Modal>}
   </div>
 }

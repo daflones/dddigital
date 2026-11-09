@@ -74,6 +74,36 @@ do $$ begin
     if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
   end;
 end $$;
+-- Roles: member has no powers, gains them only via an assigned role.
+select set_config('request.jwt.claims','{"sub":"dd000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
+do $$ begin
+  begin
+    perform public.ddtal_create_role(current_setting('ddtal.test.server')::uuid,'Intruder','#ff0000','{"kick_members":true}'::jsonb);
+    raise exception 'ASSERTION FAILED: member created role';
+  exception when raise_exception then
+    if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
+  end;
+end $$;
+select pg_temp.ddtal_assert(not public.ddtal_has_perm(current_setting('ddtal.test.server')::uuid,auth.uid(),'moderate_voice'),'member cannot moderate voice by default');
+select set_config('request.jwt.claims','{"sub":"dd000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select set_config('ddtal.test.role',public.ddtal_create_role(current_setting('ddtal.test.server')::uuid,'Mr Robot','#d5ff85','{"moderate_voice":true,"kick_members":true}'::jsonb)::text,true);
+select public.ddtal_assign_role(current_setting('ddtal.test.role')::uuid,'dd000000-0000-4000-8000-000000000002');
+select set_config('request.jwt.claims','{"sub":"dd000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
+select pg_temp.ddtal_assert(public.ddtal_has_perm(current_setting('ddtal.test.server')::uuid,auth.uid(),'moderate_voice'),'assigned role grants voice moderation');
+select pg_temp.ddtal_assert(public.ddtal_can_moderate_voice(current_setting('ddtal.test.channel')::uuid),'role holder moderates voice channel');
+select pg_temp.ddtal_assert(not public.ddtal_has_perm(current_setting('ddtal.test.server')::uuid,auth.uid(),'manage_channels'),'role grants only its own flags');
+select set_config('request.jwt.claims','{"sub":"dd000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
+select public.ddtal_unassign_role(current_setting('ddtal.test.role')::uuid,'dd000000-0000-4000-8000-000000000002');
+select set_config('request.jwt.claims','{"sub":"dd000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
+select pg_temp.ddtal_assert(not public.ddtal_has_perm(current_setting('ddtal.test.server')::uuid,auth.uid(),'moderate_voice'),'unassigning role revokes power');
+do $$ begin
+  begin
+    perform public.ddtal_remove_member(current_setting('ddtal.test.server')::uuid,'dd000000-0000-4000-8000-000000000001');
+    raise exception 'ASSERTION FAILED: member removed owner';
+  exception when raise_exception then
+    if sqlerrm like 'ASSERTION FAILED:%' then raise; end if;
+  end;
+end $$;
 select set_config('request.jwt.claims','{"sub":"dd000000-0000-4000-8000-000000000001","role":"authenticated"}',true);
 select public.ddtal_accept_friend(current_setting('ddtal.test.friend')::uuid);
 select set_config('ddtal.test.dm',public.ddtal_open_dm('dd000000-0000-4000-8000-000000000003')::text,true);

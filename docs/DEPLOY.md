@@ -6,13 +6,16 @@
 - Supabase: `ruisoxcbuiuktffsqcro`, o mesmo usado pelo fsociety.
 - Baseline `ddtal_` aplicado e permissões validadas em transação com rollback.
 - Bucket privado `ddtal-attachments` criado; limite de 20 MB e tipos de arquivo restritos.
-- Edge Function `ddtal-livekit-token` publicada.
+- Edge Functions `ddtal-livekit-token` e `ddtal-moderate-voice` publicadas.
 - Google e e-mail já estavam habilitados no Auth compartilhado.
 - CAPTCHA Turnstile já estava habilitado e foi preservado.
 - URLs locais `http://localhost:5173/**` e `http://127.0.0.1:5173/**` acrescentadas à allowlist. As URLs existentes e o Site URL do SeekerAI foram preservados.
 - Domínio de produção definido: `https://discodigital.daforja.com.br`. O DNS já aponta para a Cloudflare; o hostname responde quando o Easypanel associar a origem e emitir o certificado.
 - Redirect `https://discodigital.daforja.com.br/**` já acrescentado ao Supabase Auth e `DDTAL_ALLOWED_ORIGINS` já inclui o domínio de produção nas secrets das Edge Functions.
-- Credenciais LiveKit de produção ainda precisam ser configuradas para ativar chamadas reais.
+- Credenciais LiveKit Cloud configuradas (`wss://fsociety-6fl48hgp.livekit.cloud`); token JWT validado em produção.
+- Cargos (`ddtal_roles` + `ddtal_member_roles`) com permissões por cargo: moderar voz, gerenciar canais/cargos/convites, expulsar membros e editar notas.
+- Moderação de voz via `ddtal-moderate-voice` (LiveKit Server API): silenciar, devolver voz, expulsar da sala e mover entre canais.
+- Painel flutuante (document Picture-in-Picture) com controles e prévia da transmissão ao compartilhar a tela.
 - Build local e Docker/Nginx validados. Testes com duas contas verificaram Realtime, anexos originais, notas, amigos e conversas privadas. Um SFU LiveKit local validou voz, vídeo, transmissão sintética, ponteiro, desenhos e mão levantada; a transmissão entre redes e os fluxos CAPTCHA/Google do domínio final continuam pendentes.
 
 ## 2. Frontend no Easypanel
@@ -83,6 +86,7 @@ Não inclua barras finais nas origens. CORS compara a origem exata. Acrescente o
 ```sh
 supabase secrets set --env-file .env.livekit --project-ref ruisoxcbuiuktffsqcro
 supabase functions deploy ddtal-livekit-token --project-ref ruisoxcbuiuktffsqcro --use-api
+supabase functions deploy ddtal-moderate-voice --project-ref ruisoxcbuiuktffsqcro --use-api
 ```
 
 A CLI pode pedir confirmação. `--yes` é aceito para execução já autorizada em automações. Faça deploy **somente da função nomeada** para não mexer nas funções dos outros projetos.
@@ -109,9 +113,11 @@ Use a documentação oficial de deploy do LiveKit. Não coloque API secret no bu
 2. Crie o servidor `F.dev • Builders`.
 3. Use **Convide sua comunidade** para gerar o link.
 4. Compartilhe o link com os alunos. Novos membros entram com papel `member`; o criador tem papel `owner`.
-5. Abra **Sala de aula**, entre na chamada e ative o microfone.
-6. Compartilhe a tela. Para áudio do computador, prefira compartilhar uma aba e marque a opção de compartilhar áudio no seletor do navegador, quando disponível.
-7. Use **Chat** para dúvidas e imagens, **Notas** para o registro da aula e os controles sobre a transmissão para apontar/desenhar.
+5. Na aba **Pessoas**, use **Gerenciar cargos** para criar cargos (ex.: `Mr Robot`) e atribuir no menu de cada membro.
+6. Abra **Sala de aula**, entre na chamada e ative o microfone.
+7. Compartilhe a tela. Para áudio do computador, prefira compartilhar uma aba e marque a opção de compartilhar áudio no seletor do navegador, quando disponível.
+8. Use **Chat** para dúvidas e imagens, **Notas** para o registro da aula e os controles sobre a transmissão para apontar/desenhar.
+9. Ao compartilhar, o painel flutuante abre sobre a tela (Chrome/Edge) com microfone, câmera, lista de participantes e prévia da transmissão. Para moderar um aluno, passe o mouse sobre o card dele: silenciar, devolver voz, mover para outra sala ou expulsar.
 
 Amigos são encontrados por identificador, não por e-mail. O aceite libera a conversa privada e a sala de chamada dos dois. Não há ainda notificação de chamada recebida: o outro participante precisa abrir a conversa e entrar.
 
@@ -129,6 +135,7 @@ As contas são compartilhadas com o Supabase do fsociety/SeekerAI. Alterações 
 
 - Notas têm edição pela equipe com controle de versão; não são um editor CRDT com digitação simultânea.
 - As marcações não são gravadas nem reproduzidas para quem entra depois.
-- Não há gravação/transcrição, quadro infinito, moderação de microfones remotos, remoção de membros, notificações push, presença global ou contador real de dias da turma.
-- Tokens de sala expiram em 15 minutos para novas conexões; revogação imediata de um participante já conectado exigirá remoção pela API LiveKit.
+- Não há gravação/transcrição, quadro infinito, notificações push, presença global ou contador real de dias da turma.
+- Tokens de sala expiram em 15 minutos para novas conexões; participantes conectados continuam até saírem ou serem removidos pela moderação.
+- O painel flutuante usa a API document Picture-in-Picture, disponível no Chrome/Edge. Em outros navegadores os controles continuam na janela principal.
 - Mudança de permissões, cotas, limites de envio e políticas de retenção devem ser planejadas antes de ampliar o uso para uma comunidade pública grande.

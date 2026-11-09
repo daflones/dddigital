@@ -35,3 +35,70 @@
 .captcha{margin:0 0 17px;min-height:65px}
 @media(max-width:900px){.conversation-panel.mobile-panel-open .panel-tabs>button.mobile-only{display:flex}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* ---- Discodigital roles & voice moderation ---- */
+.role-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+.role-badge{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;border:1px solid;border-radius:20px;padding:2px 7px;font-style:normal}
+.tile-role{display:inline-flex;align-items:center;gap:3px;font-size:8px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;border:1px solid;border-radius:20px;padding:1px 6px;margin-left:5px;font-style:normal}
+.role-dot{display:inline-block;width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.owner-icon{color:#b69afb;flex-shrink:0}
+.manage-roles-button{display:flex;align-items:center;gap:7px;width:100%;padding:9px 11px;margin:4px 0 12px;background:rgba(182,154,251,.08);border:1px solid rgba(182,154,251,.25);border-radius:9px;color:#c9b8f5;font-size:12px;font-weight:600;cursor:pointer;transition:.15s}
+.manage-roles-button:hover{background:rgba(182,154,251,.15);color:#e6dcff}
+.member-row{position:relative}
+.member-menu-button{opacity:0;transition:.15s;flex-shrink:0}
+.member-row:hover .member-menu-button{opacity:1}
+.member-menu{position:absolute;right:0;top:calc(100% - 2px);z-index:40;min-width:200px;background:#17131f;border:1px solid rgba(255,255,255,.1);border-radius:11px;padding:6px;box-shadow:0 14px 38px rgba(0,0,0,.55)}
+.member-menu>button{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border:none;background:none;color:#cfc6e0;font-size:12px;border-radius:7px;cursor:pointer;text-align:left}
+.member-menu>button:hover{background:rgba(182,154,251,.12);color:#fff}
+.member-menu>button.danger{color:#ff8f8f}.member-menu>button.danger:hover{background:rgba(255,90,90,.12);color:#ffb0b0}
+.member-menu .menu-label{display:block;padding:6px 10px 4px;font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6f6484}
+.menu-check{margin-left:auto;font-size:10px;color:#6f6484}.menu-check.on{color:#9fe870}
+.roles-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px;max-height:300px;overflow-y:auto}
+.role-item{border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.03)}
+.role-item>summary{display:flex;align-items:center;gap:9px;padding:10px 12px;cursor:pointer;font-size:13px;font-weight:600;color:#e8e2f5;list-style:none}
+.role-item>summary::-webkit-details-marker{display:none}
+.role-summary-actions{margin-left:auto;display:flex;gap:3px}
+.role-summary-actions>button{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border:none;border-radius:6px;background:rgba(255,255,255,.06);color:#a89ec0;cursor:pointer}
+.role-summary-actions>button:hover:not(:disabled){background:rgba(182,154,251,.2);color:#fff}
+.role-summary-actions>button:disabled{opacity:.3;cursor:default}
+.role-form{padding:10px 12px;display:flex;flex-direction:column;gap:10px}
+.role-create{border-top:1px solid rgba(255,255,255,.1);padding:14px 0 0}
+.role-create>strong{font-size:12px;letter-spacing:.8px;text-transform:uppercase;color:#b69afb}
+.role-fields{display:grid;grid-template-columns:1fr 64px;gap:10px}
+.role-fields input[type=color]{height:38px;padding:4px;cursor:pointer}
+.perm-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+.perm-check{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid rgba(255,255,255,.09);border-radius:8px;font-size:11.5px;color:#cfc6e0;cursor:pointer}
+.perm-check:hover{border-color:rgba(182,154,251,.4)}
+.perm-check input{accent-color:#b69afb;margin:0}
+/* Participant moderation menu inside voice tiles */
+.participant-tile{position:relative}
+.tile-moderate{position:absolute;top:6px;right:6px;display:flex;align-items:center;justify-content:center;width:26px;height:26px;border:none;border-radius:7px;background:rgba(10,8,16,.75);color:#b69afb;cursor:pointer;opacity:0;transition:.15s;backdrop-filter:blur(4px)}
+.participant-tile:hover .tile-moderate{opacity:1}
+.moderate-menu{position:absolute;top:36px;right:6px;z-index:50;min-width:190px;background:#17131f;border:1px solid rgba(255,255,255,.12);border-radius:11px;padding:6px;box-shadow:0 14px 38px rgba(0,0,0,.6)}
+.moderate-menu>button{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border:none;background:none;color:#cfc6e0;font-size:12px;border-radius:7px;cursor:pointer;text-align:left}
+.moderate-menu>button:hover{background:rgba(182,154,251,.12);color:#fff}
+.moderate-menu>button.danger{color:#ff8f8f}.moderate-menu>button.danger:hover{background:rgba(255,90,90,.12);color:#ffb0b0}
+.moderate-submenu{border-top:1px solid rgba(255,255,255,.08);margin-top:4px;padding-top:4px}
+.moderate-submenu>button{display:flex;align-items:center;gap:9px;width:100%;padding:7px 10px;border:none;background:none;color:#a89ec0;font-size:11.5px;border-radius:7px;cursor:pointer;text-align:left}
+.moderate-submenu>button:hover{background:rgba(182,154,251,.12);color:#fff}
+/* Floating control panel (document Picture-in-Picture) */
+.pip-body{margin:0;background:#0d0a14;font-family:inherit;overflow:hidden}
+.pip-panel{display:flex;flex-direction:column;height:100vh;padding:12px;gap:10px;color:#e8e2f5;font-family:Inter,system-ui,sans-serif}
+.pip-header{display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#b69afb}
+.pip-header>span{display:flex;align-items:center;gap:7px}
+.pip-header>button{display:flex;border:none;background:rgba(255,90,90,.15);color:#ff8f8f;border-radius:6px;width:24px;height:24px;align-items:center;justify-content:center;cursor:pointer}
+.pip-screen{position:relative;border-radius:9px;overflow:hidden;border:1px solid rgba(182,154,251,.25)}
+.pip-screen video{width:100%;display:block;max-height:150px;object-fit:cover}
+.pip-screen>span{position:absolute;left:8px;bottom:6px;font-size:9px;background:rgba(10,8,16,.8);padding:2px 7px;border-radius:10px;color:#d5ff85}
+.pip-people{display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex:1;min-height:0}
+.pip-people>div{display:flex;align-items:center;gap:8px;font-size:12px;color:#cfc6e0;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,.04)}
+.pip-people>div.speaking{background:rgba(159,232,112,.1);box-shadow:inset 0 0 0 1px rgba(159,232,112,.35)}
+.pip-people svg{margin-left:auto}
+.pip-people .raised{margin-left:0;color:#d5ff85}
+.pip-controls{display:flex;gap:8px;justify-content:center}
+.pip-controls>button{display:flex;align-items:center;justify-content:center;width:42px;height:42px;border:none;border-radius:50%;background:rgba(255,255,255,.08);color:#e8e2f5;cursor:pointer;transition:.15s}
+.pip-controls>button:hover:not(:disabled){background:rgba(182,154,251,.25)}
+.pip-controls>button.off{color:#ff8f8f}
+.pip-controls>button.active{background:#b69afb;color:#17131f}
+.pip-controls>button.hangup{background:rgba(255,90,90,.2);color:#ff8f8f}
+.pip-controls>button.hangup:hover{background:#ff5a5a;color:#fff}
