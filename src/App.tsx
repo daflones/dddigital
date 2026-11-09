@@ -88,11 +88,28 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set())
   const [dmPeers, setDmPeers] = useState<Record<string, Profile>>({})
   const [incomingCall, setIncomingCall] = useState<{ channelId: string; from: string; name: string; avatar?: string | null } | null>(null)
+  const [calling, setCalling] = useState<{ channelId: string; name: string; avatar?: string | null } | null>(null)
   const [statusMenu, setStatusMenu] = useState(false)
   const inviteAttempted = useRef(false)
   const roomRef = useRef<RoomCredentials | null>(null)
   roomRef.current = room
   const myStatus = profile.presence || 'online'
+  // OS-level notifications (visible even when the window is minimized).
+  const notify = useCallback((title: string, body: string, onclick?: () => void) => {
+    try {
+      if (!('Notification' in window)) return
+      if (Notification.permission !== 'granted') return
+      const n = new Notification(title, { body, icon: '/favicon.svg' })
+      n.onclick = () => { window.focus(); onclick?.() }
+    } catch { /* notifications unavailable */ }
+  }, [])
+  // Ask for notification permission on the first user interaction.
+  useEffect(() => {
+    if (demo || !('Notification' in window) || Notification.permission !== 'default') return
+    const ask = () => { void Notification.requestPermission() }
+    document.addEventListener('click', ask, { once: true })
+    return () => document.removeEventListener('click', ask)
+  }, [demo])
   const currentServer = servers.find(s => s.id === serverId)
   const channel = channels.find(c => c.id === channelId)
   const staff = currentServer?.owner_id === profile.id || members.some(m => m.user_id === profile.id && m.role === 'moderator')
@@ -245,18 +262,37 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
             return
           }
           setIncomingCall({ channelId: String(payload.channelId), from: String(payload.from), name: String(payload.name || 'Alguém'), avatar: payload.avatar as string | null })
+          notify(`${payload.name || 'Alguém'} está te ligando`, 'Clique para ver a chamada.')
         } else if (payload.type === 'call_declined') {
           const reason = payload.reason === 'busy' ? 'está ocupado(a) agora'
             : payload.reason === 'away' ? 'está ausente'
             : payload.reason === 'timeout' ? 'não atendeu a ligação'
             : payload.reason === 'offline' ? 'está offline' : 'recusou a ligação'
           toast.info(`${payload.name || 'A pessoa'} ${reason}.`)
+          setCalling(null)
           if (roomRef.current?.channel.id === payload.channelId) leave()
         }
       }).subscribe()
     return () => { void db().removeChannel(signal) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demo, profile.id, myStatus])
+  }, [demo, profile.id, myStatus, notify])
+  // Outgoing call: ringback tone until answered, declined or ~45s.
+  useEffect(() => {
+    if (!calling) return
+    const stop = startRingtone()
+    const timer = setTimeout(() => {
+      setCalling(null)
+      if (roomRef.current?.channel.id === calling.channelId) leave()
+      toast.info('Chamada não atendida.')
+    }, 45000)
+    return () => { stop(); clearTimeout(timer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calling])
+  // Callee joined the room -> stop showing the calling placeholder.
+  useEffect(() => {
+    if (calling && roomParticipants.length > 1) setCalling(null)
+  }, [calling, roomParticipants])
+  useEffect(() => { if (!room) setCalling(null) }, [room])
   // Incoming call ring + auto-decline after ~32s.
   useEffect(() => {
     if (!incomingCall) return
@@ -279,11 +315,16 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
         if (m.author_id === profile.id || !dmIds.has(m.channel_id)) return
         if (myStatus !== 'online') return
         if (m.channel_id === channelId && view === 'dm' && document.visibilityState === 'visible') return
-        pop()
         const peer = dmPeers[m.channel_id]
-        toast(`Nova mensagem de ${peer?.display_name || 'conversa privada'}`, {
-          action: { label: 'Abrir', onClick: () => selectChannel(m.channel_id, 'direct') },
-        })
+        if (document.visibilityState === 'hidden') {
+          notify(`Nova mensagem de ${peer?.display_name || 'conversa privada'}`, 'Clique para abrir a conversa.', () => selectChannel(m.channel_id, 'direct'))
+          pop()
+        } else {
+          pop()
+          toast(`Nova mensagem de ${peer?.display_name || 'conversa privada'}`, {
+            action: { label: 'Abrir', onClick: () => selectChannel(m.channel_id, 'direct') },
+          })
+        }
       }).subscribe()
     return () => { void db().removeChannel(sub) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -315,6 +356,7 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
       selectChannel(id, 'direct')
       if (call) {
         await join(dm)
+        setCalling({ channelId: id, name: peer.display_name, avatar: peer.avatar_url })
         void sendSignal(peer.id, { type: 'call', channelId: id, from: profile.id, name: profile.display_name, avatar: profile.avatar_url })
       }
     } catch (e) { toast.error(errorMessage(e)) }
@@ -376,23 +418,33 @@ function Workspace({ profile, updateProfile, demo, exitDemo }: { profile: Profil
       </div>
     </aside>
     <div className="workspace">
-      <header className="workspace-header"><div><button className="icon-button mobile-only" aria-label="Abrir canais" onClick={() => setMobileNav(true)}><Menu size={21} /></button>{view === 'friends' ? <Users size={21} /> : channel?.kind === 'direct' ? <Avatar name={channel.name} url={dmPeers[channel.id]?.avatar_url} size="tiny" presence={presenceOf(dmPeers[channel.id])} /> : voice ? <Volume2 size={22} /> : <Hash size={22} />}<strong>{view === 'friends' ? 'Amigos' : channel?.name || 'Bem-vindo ao seu espaço'}</strong>{view === 'server' && <><span className="header-separator" /><span className="channel-topic">{channel?.topic || 'Boas conexões começam aqui.'}</span></>}{view === 'dm' && <><span className="header-separator" /><span className="channel-topic">Conversa privada — só vocês dois.</span></>}</div><div>{demo && <span className="demo-tag">MODO DEMONSTRAÇÃO</span>}{view === 'dm' && channel && <button className="icon-button" aria-label="Ligar" title={room?.channel.id === channel.id ? 'Voltar para a chamada' : 'Ligar'} onClick={() => room?.channel.id === channel.id ? selectChannel(channel.id, 'direct') : void join()}><Phone size={18} className={room?.channel.id === channel.id ? 'green' : ''} /></button>}<button className="icon-button" aria-label="Buscar mensagens" title="Buscar mensagens" disabled={!channel || view === 'friends'} onClick={() => requireAccount(() => setDialog('search'))}><Search size={19} /></button><button className="icon-button" aria-label="Ver membros" title="Ver membros" onClick={() => { setPanel('members'); setMobilePanel(!mobilePanel) }}><Users size={20} /></button>{demo ? <button className="header-login" onClick={exitDemo}>Entrar <ArrowRight size={14} /></button> : <span className="private-label"><ShieldCheck size={14} />Seu espaço</span>}</div></header>
+      <header className="workspace-header"><div><button className="icon-button mobile-only" aria-label="Abrir canais" onClick={() => setMobileNav(true)}><Menu size={21} /></button>{view === 'friends' ? <Users size={21} /> : channel?.kind === 'direct' ? <Avatar name={channel.name} url={dmPeers[channel.id]?.avatar_url} size="tiny" presence={presenceOf(dmPeers[channel.id])} /> : voice ? <Volume2 size={22} /> : <Hash size={22} />}<strong>{view === 'friends' ? 'Amigos' : channel?.name || 'Bem-vindo ao seu espaço'}</strong>{view === 'server' && <><span className="header-separator" /><span className="channel-topic">{channel?.topic || 'Boas conexões começam aqui.'}</span></>}{view === 'dm' && <><span className="header-separator" /><span className="channel-topic">Conversa privada — só vocês dois.</span></>}</div><div>{demo && <span className="demo-tag">MODO DEMONSTRAÇÃO</span>}{view === 'dm' && channel && <button className="icon-button" aria-label="Ligar" title={room?.channel.id === channel.id ? 'Voltar para a chamada' : 'Ligar'} onClick={() => {
+          if (room?.channel.id === channel.id) return selectChannel(channel.id, 'direct')
+          void join()
+          const peer = dmPeers[channel.id]
+          if (peer) {
+            setCalling({ channelId: channel.id, name: peer.display_name, avatar: peer.avatar_url })
+            void sendSignal(peer.id, { type: 'call', channelId: channel.id, from: profile.id, name: profile.display_name, avatar: profile.avatar_url })
+          }
+        }}><Phone size={18} className={room?.channel.id === channel.id ? 'green' : ''} /></button>}<button className="icon-button" aria-label="Buscar mensagens" title="Buscar mensagens" disabled={!channel || view === 'friends'} onClick={() => requireAccount(() => setDialog('search'))}><Search size={19} /></button><button className="icon-button" aria-label="Ver membros" title="Ver membros" onClick={() => { setPanel('members'); setMobilePanel(!mobilePanel) }}><Users size={20} /></button>{demo ? <button className="header-login" onClick={exitDemo}>Entrar <ArrowRight size={14} /></button> : <span className="private-label"><ShieldCheck size={14} />Seu espaço</span>}</div></header>
       {inviteError && <div className="workspace-alert" role="alert">{inviteError}<button className="text-button" onClick={() => setInviteError('')}>Fechar</button></div>}
       {loadError && <div className="workspace-alert" role="alert">{loadError}<button className="text-button" onClick={() => void load()}>Tentar novamente</button></div>}
-      <div className={`workspace-body ${voice && view === 'server' ? 'with-panel' : ''}`}>
+      <div className={`workspace-body ${(voice && view === 'server') || (view === 'dm' && activeRoomVisible) ? 'with-panel' : ''}`}>
         <main className="workspace-main">
-          {room && <div className="live-container" style={{ display: activeRoomVisible ? 'flex' : 'none' }}><Suspense fallback={<div className="center-muted">Preparando chamada…</div>}><LiveRoom key={room.channel.id} credentials={room} leave={leave}
+          {room && <div className="live-container" style={{ display: activeRoomVisible ? 'flex' : 'none' }}>
+            {calling && calling.channelId === room.channel.id && <div className="calling-overlay"><div className="calling-card"><Avatar name={calling.name} url={calling.avatar} /><div className="calling-info"><strong>{calling.name}</strong><span>Chamando…</span></div></div></div>}
+            <Suspense fallback={<div className="center-muted">Preparando chamada…</div>}><LiveRoom key={room.channel.id} credentials={room} leave={leave}
             canModerate={room.channel.kind === 'direct' || can('moderate_voice')}
             moveTargets={channels.filter(c => c.kind === 'voice' && c.id !== room.channel.id)}
             onParticipants={setRoomParticipants}
             moderate={(action, targetUserId, destinationChannelId) => moderate(action, room.channel.id, targetUserId, destinationChannelId)} /></Suspense></div>}
           {view === 'friends' ? <Friends profile={profile} demo={demo} openDM={openDM} presenceOf={presenceOf} /> : channel?.kind === 'direct' && view === 'dm' ? (!activeRoomVisible && <Chat key={channel.id} channel={channel} profile={profile} demo={demo} canDeleteOthers={false} onDM={peer => void openDM(peer)} />) : !channel ? <div className="empty-workspace"><div className="empty-logo"><AudioLines size={44} /></div><span className="eyebrow">SEU ESPAÇO PARA IR ALÉM</span><h1>{loading ? 'Preparando suas conexões…' : 'Toda comunidade começa com alguém.'}</h1><p>{loading ? 'Só um instante.' : 'Crie um servidor para sua turma ou abra o link de convite que recebeu.'}</p>{!loading && <button className="primary" onClick={() => requireAccount(() => setDialog('server'))}><Plus size={18} />Criar meu primeiro servidor</button>}</div> : voice ? !activeRoomVisible && <ClassroomLobby channel={channel} members={channel.kind === 'direct' ? [] : members} demo={demo} joining={joining} join={() => void join()} /> : <Chat key={channel.id} channel={channel} profile={profile} demo={demo} canDeleteOthers={can('kick_members')} onDM={peer => void openDM(peer)} />}
         </main>
-        {voice && channel && view === 'server' && <aside className={`conversation-panel ${mobilePanel ? 'mobile-panel-open' : ''}`}><div className="panel-tabs"><button className={panel === 'chat' ? 'active' : ''} onClick={() => setPanel('chat')}><MessageSquare size={15} />Chat</button><button className={panel === 'notes' ? 'active' : ''} onClick={() => setPanel('notes')}><BookOpen size={15} />Notas</button><button className={panel === 'members' ? 'active' : ''} onClick={() => setPanel('members')}><Users size={15} />Pessoas</button><button className="icon-button mobile-only" aria-label="Fechar painel" onClick={() => setMobilePanel(false)}><X size={16} /></button></div>{panel === 'chat' ? <><div className="panel-subheading"><span>O PAPO CONTINUA AQUI</span><MessageCircle size={14} /></div><Chat key={channel.id} channel={channel} profile={profile} demo={demo} compact canDeleteOthers={can('kick_members')} onDM={peer => void openDM(peer)} /></> : panel === 'notes' ? <Notes key={channel.id} channelId={channel.id} userId={profile.id} canEdit={can('edit_notes') || channel.kind === 'direct'} demo={demo} /> : <MembersPanel channel={channel} members={members} roles={roles} memberRoles={memberRoles} can={can} profile={profile} demo={demo} openRoles={() => setDialog('roles')} openProfile={() => setDialog('profile')} changed={() => void refreshRoles()} openDM={peer => void openDM(peer)} presenceOf={presenceOf}
+        {channel && ((voice && view === 'server') || (view === 'dm' && activeRoomVisible)) && <aside className={`conversation-panel ${mobilePanel ? 'mobile-panel-open' : ''}`}><div className="panel-tabs"><button className={panel === 'chat' ? 'active' : ''} onClick={() => setPanel('chat')}><MessageSquare size={15} />Chat</button><button className={panel === 'notes' ? 'active' : ''} onClick={() => setPanel('notes')}><BookOpen size={15} />Notas</button><button className={panel === 'members' ? 'active' : ''} onClick={() => setPanel('members')}><Users size={15} />Pessoas</button><button className="icon-button mobile-only" aria-label="Fechar painel" onClick={() => setMobilePanel(false)}><X size={16} /></button></div>{panel === 'chat' ? <><div className="panel-subheading"><span>O PAPO CONTINUA AQUI</span><MessageCircle size={14} /></div><Chat key={channel.id} channel={channel} profile={profile} demo={demo} compact canDeleteOthers={can('kick_members')} onDM={peer => void openDM(peer)} /></> : panel === 'notes' ? <Notes key={channel.id} channelId={channel.id} userId={profile.id} canEdit={can('edit_notes') || channel.kind === 'direct'} demo={demo} /> : <MembersPanel channel={channel} members={members} roles={roles} memberRoles={memberRoles} can={can} profile={profile} demo={demo} openRoles={() => setDialog('roles')} openProfile={() => setDialog('profile')} changed={() => void refreshRoles()} openDM={peer => void openDM(peer)} presenceOf={presenceOf}
             voice={room ? { channelId: room.channel.id, inRoom: (id: string) => roomParticipants.includes(id), moveTargets: channels.filter(c => c.kind === 'voice' && c.id !== room.channel.id), moderate } : undefined} />}<div className="panel-footer"><span className="tiny-brand">d.</span><span>Conexões que fazem a diferença.</span></div></aside>}
       </div>
       <footer className="workspace-footer"><span><span className="status-dot" />{demo ? 'Você está conhecendo o discodigital' : 'Um espaço feito para sua comunidade'}</span><span><Headphones size={13} />Menos distância. Mais possibilidades.<span className="footer-version">DDTAL / 0.1</span></span></footer>
-      {voice && view === 'server' && <button className="mobile-chat-toggle" aria-label="Abrir chat da sala" onClick={() => { setPanel('chat'); setMobilePanel(true) }}><MessageSquare size={20} /></button>}
+      {((voice && view === 'server') || (view === 'dm' && activeRoomVisible)) && <button className="mobile-chat-toggle" aria-label="Abrir chat da sala" onClick={() => { setPanel('chat'); setMobilePanel(true) }}><MessageSquare size={20} /></button>}
     </div>
     {dialog === 'server' && <CreateServer close={() => setDialog(null)} created={id => { setChannelId(null); setView('server'); void load(id) }} />}
     {dialog === 'channel' && serverId && <CreateChannel serverId={serverId} close={() => setDialog(null)} created={() => void load()} />}
