@@ -257,3 +257,13 @@
 .reply-quote span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .reply-quote.deleted{opacity:.55;font-style:italic}
 .reply-quote svg{display:none}
+
+/* floating panel: participant moderation + own-screen preview */
+.pip-person.moderatable{cursor:pointer}
+.pip-person.moderatable:hover{background:rgba(182,154,251,.1)}
+.pip-person{position:relative}
+.pip-menu{display:flex;flex-direction:column;gap:2px;margin-top:6px;padding:6px;border-radius:9px;background:#1c1826;border:1px solid rgba(255,255,255,.12)}
+.pip-menu button{display:flex;align-items:center;gap:7px;padding:6px 9px;border:none;border-radius:6px;background:none;color:#cfc6e0;font-size:11px;cursor:pointer;text-align:left}
+.pip-menu button:hover{background:rgba(182,154,251,.15)}
+.pip-menu button.danger{color:#ff8f8f}
+.pip-menu button.danger:hover{background:rgba(255,90,90,.15)}

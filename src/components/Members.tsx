@@ -117,7 +117,7 @@ export function MembersPanel({ channel, members, roles, memberRoles, can, profil
               <span className="menu-label"><PenLine size={11} /> Apelido no servidor</span>
               <div className="nickname-row"><input value={nickDraft} maxLength={40} placeholder={m.profile.display_name} onChange={e => setNickDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void saveNickname(m) }} /><button className="icon-button" aria-label="Salvar apelido" disabled={nickSaving} onClick={() => void saveNickname(m)}><Check size={15} /></button></div>
             </div>}
-            {canManageRoles && !isOwner && <><span className="menu-label">Cargos</span>
+            {canManageRoles && (!isOwner || isSelf) && <><span className="menu-label">Cargos</span>
               {roles.map(r => {
                 const has = memberRoles.some(mr => mr.user_id === m.user_id && mr.role_id === r.id)
                 return <button key={r.id} onClick={() => void toggleRole(m.user_id, r)}><i className="role-dot" style={{ background: r.color }} />{r.name}<span className={`menu-check ${has ? 'on' : ''}`}>{has ? 'sim' : 'não'}</span></button>

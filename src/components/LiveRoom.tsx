@@ -128,21 +128,40 @@ function ScreenSurface({ track, tool }: { track: TrackReference; tool: Tool }) {
 }
 
 // Floating picture-in-picture control panel: stays on top of the screen being shared.
-function FloatingPanel({ remoteScreen, raised, onClose }: { remoteScreen?: TrackReference; raised: string[]; onClose: () => void }) {
+function FloatingPanel({ remoteScreen, localScreen, raised, onClose, canModerate, moveTargets, moderate }: {
+  remoteScreen?: TrackReference; localScreen?: TrackReference; raised: string[]; onClose: () => void
+  canModerate: boolean; moveTargets: Channel[]; moderate: Moderate
+}) {
   const room = useRoomContext()
   const participants = useParticipants()
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } = useLocalParticipant()
   const [busy, setBusy] = useState(false)
+  const [menuFor, setMenuFor] = useState<string | null>(null)
   async function action(fn: () => Promise<unknown>) {
     setBusy(true)
     try { await fn() } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
   }
+  async function mod(action: ModerateAction, p: { identity: string; name?: string }, destinationChannelId?: string) {
+    setMenuFor(null)
+    const name = p.name || 'Builder'
+    try {
+      const result = await moderate(action, p.identity, destinationChannelId)
+      toast.success(action === 'mute_mic' ? `${name} foi silenciado.` : action === 'unmute_mic' ? `Voz devolvida a ${name}.` : action === 'kick' ? `${name} foi removido da sala.` : `${name} movido para ${result.channelName || 'outra sala'}.`)
+    } catch (e) { toast.error(errorMessage(e)) }
+  }
   return <div className="pip-panel">
     <div className="pip-header"><span><i className="status-dot" />Painel da sala</span><button aria-label="Fechar painel" onClick={onClose}><PhoneOff size={13} /></button></div>
+    {localScreen && <div className="pip-screen"><VideoTrack trackRef={localScreen} /><span>O que a sala está vendo de você</span></div>}
     {remoteScreen && <div className="pip-screen"><VideoTrack trackRef={remoteScreen} /><span>{remoteScreen.participant.name || 'Builder'} está compartilhando</span></div>}
-    <div className="pip-people">{participants.map(p => <div key={p.identity} className={p.isSpeaking ? 'speaking' : ''}>
+    <div className="pip-people">{participants.map(p => <div key={p.identity} className={`pip-person ${p.isSpeaking ? 'speaking' : ''} ${canModerate && !p.isLocal ? 'moderatable' : ''}`}
+      onClick={() => { if (canModerate && !p.isLocal) setMenuFor(menuFor === p.identity ? null : p.identity) }}>
       <Avatar name={p.name || 'Builder'} url={participantMeta(p).avatar_url} size="tiny" /><span>{p.isLocal ? 'Você' : styledTileName(p.name || 'Builder', participantMeta(p))}</span>
       {raised.includes(p.identity) && <Hand size={12} className="raised" />}{p.isMicrophoneEnabled ? <Mic size={11} /> : <MicOff size={11} />}
+      {menuFor === p.identity && <div className="pip-menu" onClick={e => e.stopPropagation()}>
+        <button onClick={() => void mod(p.isMicrophoneEnabled ? 'mute_mic' : 'unmute_mic', p)}>{p.isMicrophoneEnabled ? <><VolumeX size={13} />Silenciar</> : <><Volume1 size={13} />Devolver a voz</>}</button>
+        {moveTargets.map(c => <button key={c.id} onClick={() => void mod('move', p, c.id)}><Volume2 size={13} />Mover para {c.name}</button>)}
+        <button className="danger" onClick={() => void mod('kick', p)}><UserMinus size={13} />Expulsar da sala</button>
+      </div>}
     </div>)}</div>
     <div className="pip-controls">
       <button className={!isMicrophoneEnabled ? 'off' : ''} disabled={busy} title={isMicrophoneEnabled ? 'Desativar microfone' : 'Ativar microfone'} onClick={() => void action(() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled))}>{isMicrophoneEnabled ? <Mic size={16} /> : <MicOff size={16} />}</button>
@@ -201,6 +220,7 @@ function RoomView({ canModerate, moveTargets, moderate, onParticipants }: { canM
   const screens = tracks.filter(t => t.source === Track.Source.ScreenShare)
   const screen = screens.find(t => t.publication.trackSid === activeScreen) || screens[0]
   const remoteScreen = screens.find(t => !t.participant.isLocal)
+  const localScreen = screens.find(t => t.participant.isLocal)
   const meRaised = raised.includes(localParticipant.identity)
   useEffect(() => {
     const receive = (bytes: Uint8Array, participant?: RemoteParticipant, _kind?: unknown, topic?: string) => {
@@ -245,7 +265,7 @@ function RoomView({ canModerate, moveTargets, moderate, onParticipants }: { canM
   }
   return <>
     <RoomAudioRenderer muted={deafened} />
-    {pipWindow && createPortal(<FloatingPanel remoteScreen={remoteScreen} raised={raised} onClose={() => pipWindow.close()} />, pipWindow.document.body)}
+    {pipWindow && createPortal(<FloatingPanel remoteScreen={remoteScreen} localScreen={localScreen} raised={raised} canModerate={canModerate} moveTargets={moveTargets} moderate={moderate} onClose={() => pipWindow.close()} />, pipWindow.document.body)}
     <div className="live-status"><span><i className="status-dot" />{state === ConnectionState.Connected ? 'Você está na sala' : 'Reconectando…'}</span><span>{participants.length} {participants.length === 1 ? 'pessoa' : 'pessoas'} · áudio ao vivo</span></div>
     <div className="live-stage" ref={stage}>
       {screen ? <ScreenSurface key={screen.publication.trackSid} track={screen} tool={tool} /> : <div className="no-share"><div className="no-share-icon"><MonitorUp size={42} /></div><span className="eyebrow">ESPAÇO PARA SUAS IDEIAS</span><h2>Mostre o que você está construindo.</h2><p>Compartilhe uma aba, janela ou sua tela inteira.<br />A turma acompanha e participa aqui.</p><button className="primary" disabled={busy} onClick={() => void action(() => localParticipant.setScreenShareEnabled(true, { audio: true, resolution: { width: 1920, height: 1080, frameRate: 30 }, contentHint: 'text' }))}><MonitorUp size={17} />Compartilhar minha tela</button></div>}
